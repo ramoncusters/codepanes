@@ -1,0 +1,33 @@
+{
+  "name": "codepanes",
+  "version": "0.1.0",
+  "description": "TUI for managing Git worktrees with lazygit integration",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "npm run build && npm start",
+    "build": "tsc",
+    "start": "node scripts/run.mjs"
+  },
+  "keywords": [
+    "tui",
+    "git",
+    "worktree",
+    "lazygit",
+    "opentui"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=26.4.0"
+  },
+  "dependencies": {
+    "@opentui/core": "0.5.8",
+    "node-pty": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsx": "^3.12.7",
+    "typescript": "^5.2.0"
+  }
+}
