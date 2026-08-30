@@ -603,7 +603,7 @@ async function main(): Promise<void> {
       if (!keybindingsActive && !configEditorActive) {
         void focusTerminal();
       }
-      footerText.content = "Lazygit focused   C config   Tab switch tabs   ? Keybindings   Q quit";
+      footerText.content = "Lazygit focused   C config   Tab switch tabs   Q quit";
     }
   };
 
@@ -771,6 +771,9 @@ async function main(): Promise<void> {
       updateTab(nextTab);
       return;
     }
+    if (activeTab === 1 && key.name === "?" && !key.ctrl && !key.meta) {
+      return;
+    }
     const globalBinding = !configEditorActive
       ? getKeybindings("Global")[key.shift ? key.name.toUpperCase() : key.name]
       : undefined;
@@ -779,10 +782,10 @@ async function main(): Promise<void> {
       performAction(globalBinding.action);
       return;
     }
-    if (key.name === "?" && !key.ctrl && !key.meta) {
+    if (activeTab === 0 && key.name === "?" && !key.ctrl && !key.meta) {
       key.preventDefault();
       if (keybindingsActive) closeKeybindings();
-      else showKeybindings(activeTab === 0 ? "Worktrees" : "Lazygit");
+      else showKeybindings("Worktrees");
       return;
     }
     if (keybindingsActive && key.name === "escape") {

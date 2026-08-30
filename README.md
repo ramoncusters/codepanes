@@ -22,8 +22,9 @@ between the Worktrees and Lazygit tabs, and `Q` to quit.
 
 User configuration is stored in `~/.config/codepanes/config.json`. Keybindings
 are nested by tab name, can be global or scoped to a repository, and each
-binding has a display `name`. Press `?` to view the current tab's bindings.
-The `Global` bindings apply on every tab.
+binding has a display `name`. Press `?` on the Worktrees tab to view its bindings.
+The `Global` bindings apply on every tab. On the Lazygit tab, `?` is passed
+through to Lazygit rather than opening CodePanes keybinding help.
 
 The Lazygit and configuration-editor panes configure their embedded terminal
 emulators with the host terminal's detected 16-color ANSI palette and default
