@@ -615,6 +615,15 @@ async function main(): Promise<void> {
       const lazygitPath = await findLazygit();
       const shellPath = await findShell();
       await access(worktree.path, constants.R_OK | constants.X_OK);
+      try {
+        await execFileAsync(lazygitPath, ["--version"], {
+          cwd: worktree.path,
+          env: { ...process.env, PATH: path.dirname(lazygitPath) + path.delimiter + (process.env.PATH ?? "") },
+        });
+      } catch (error) {
+        const details = error instanceof Error ? error.message : String(error);
+        throw new Error(`lazygit preflight failed (${lazygitPath}, cwd ${worktree.path}): ${details}`);
+      }
       currentPty = pty.spawn(shellPath, ["-lc", `exec ${shellQuote(lazygitPath)}`], {
         name: "xterm-256color",
         cols: Math.max(20, terminal.width),
@@ -637,7 +646,10 @@ async function main(): Promise<void> {
       terminal.focus();
     } catch (error) {
       terminalFocused = false;
-      terminal.write(`\nUnable to start lazygit: ${String(error)}\n`);
+      const details = String(error);
+      const message = `Unable to start lazygit: ${details}`;
+      footerText.content = message;
+      terminal.write(`\n${message}\n`);
     }
   };
 
