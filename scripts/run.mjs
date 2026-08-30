@@ -18,6 +18,16 @@ const child = spawn(process.execPath, [
   stdio: "inherit",
 });
 
+let shuttingDown = false;
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    child.kill(signal);
+  });
+}
+
 child.on("exit", (code, signal) => {
   if (signal) process.kill(process.pid, signal);
   process.exit(code ?? 1);
