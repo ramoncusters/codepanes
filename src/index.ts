@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import path from "node:path";
-import { access, constants, readFile, mkdir, writeFile } from "node:fs/promises";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import pty from "node-pty";
 import {
@@ -81,25 +81,6 @@ async function bareRoot(cwd: string): Promise<string> {
   const { stdout } = await execFileAsync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd });
   const commonDir = stdout.trim();
   return path.basename(commonDir) === ".git" ? path.dirname(commonDir) : commonDir;
-}
-
-async function findLazygit(): Promise<string> {
-  const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
-  if (process.platform === "darwin") {
-    pathEntries.push("/opt/homebrew/bin", "/usr/local/bin");
-  }
-  const candidates = [...new Set(pathEntries)].map((entry) => path.join(entry, "lazygit"));
-
-  for (const candidate of candidates) {
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // Try the next PATH entry.
-    }
-  }
-
-  throw new Error("lazygit was not found in PATH. Install it with `brew install lazygit` or add it to PATH.");
 }
 
 async function main(): Promise<void> {
@@ -593,8 +574,7 @@ async function main(): Promise<void> {
     if (renderer.isDestroyed) return;
 
     try {
-      const lazygitPath = await findLazygit();
-      currentPty = pty.spawn(lazygitPath, [], {
+      currentPty = pty.spawn("lazygit", [], {
         name: "xterm-256color",
         cols: Math.max(20, terminal.width),
         rows: Math.max(8, terminal.height),
