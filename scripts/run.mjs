@@ -13,7 +13,7 @@ if (actual[0] < required[0] || (actual[0] === required[0] && actual[1] < require
 
 const child = spawn(process.execPath, [
   "--experimental-ffi",
-  "dist/index.js",
+  "dist/main.js",
 ], {
   stdio: "inherit",
 });
