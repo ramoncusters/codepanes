@@ -16,6 +16,7 @@ import {
   TextRenderable,
   createCliRenderer,
   type KeyEvent,
+  type TerminalColors,
 } from "@opentui/core";
 
 const execFileAsync = promisify(execFile);
@@ -33,6 +34,26 @@ type KeyInputEvents = {
   addListener(event: "keypress", handler: (key: KeyEvent) => void): void;
   removeListener(event: "keypress", handler: (key: KeyEvent) => void): void;
 };
+
+function toOscColor(color: string | null): string | null {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color ?? "");
+  return match ? `rgb:${match[1]}/${match[2]}/${match[3]}` : null;
+}
+
+function applyEmbeddedTerminalPalette(terminal: EmbeddedTerminalRenderable, palette: TerminalColors): void {
+  const sequences = palette.palette
+    .slice(0, 16)
+    .map((color, index) => {
+      const oscColor = toOscColor(color);
+      return oscColor ? `\x1b]4;${index};${oscColor}\x07` : "";
+    });
+  const foreground = toOscColor(palette.defaultForeground);
+  const background = toOscColor(palette.defaultBackground);
+
+  if (foreground) sequences.push(`\x1b]10;${foreground}\x07`);
+  if (background) sequences.push(`\x1b]11;${background}\x07`);
+  if (sequences.length > 0) terminal.write(sequences.join(""));
+}
 
 async function getWorktrees(cwd: string): Promise<Worktree[]> {
   try {
@@ -113,20 +134,23 @@ async function main(): Promise<void> {
     ...repositoryConfig.keybindings?.[tabName],
   });
   let worktrees = await getWorktrees(cwd);
+  const fallbackTerminalBackground = "#0b1020";
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
-    backgroundColor: "#0b1020",
+    backgroundColor: fallbackTerminalBackground,
     useMouse: true,
     clearOnShutdown: true,
     consoleMode: "disabled",
     openConsoleOnError: false,
   });
+  const terminalPalette = await renderer.getPalette();
+  const terminalBackground = terminalPalette.defaultBackground ?? fallbackTerminalBackground;
 
   const root = new BoxRenderable(renderer, {
     width: "100%",
     height: "100%",
     flexDirection: "column",
-    backgroundColor: "#0b1020",
+    backgroundColor: terminalBackground,
     // border: true,
     // borderStyle: "rounded",
     // borderColor: "#2b3c68",
@@ -174,6 +198,7 @@ async function main(): Promise<void> {
     border: true,
     borderStyle: "rounded",
     borderColor: "#2b3c68",
+    backgroundColor: "#111a33",
   });
   const terminalPanel = new BoxRenderable(renderer, {
     paddingTop: 1,
@@ -181,6 +206,7 @@ async function main(): Promise<void> {
     border: true,
     borderStyle: "rounded",
     borderColor: "#2b3c68",
+    backgroundColor: terminalBackground,
     // title: " lazygit ",
   });
   const footer = new BoxRenderable(renderer, {
@@ -268,7 +294,7 @@ async function main(): Promise<void> {
     border: true,
     borderStyle: "rounded",
     borderColor: "#8be9fd",
-    backgroundColor: "#111a33",
+    backgroundColor: terminalBackground,
     padding: 1,
     visible: false,
     zIndex: 30,
@@ -336,6 +362,8 @@ async function main(): Promise<void> {
   const select = new SelectRenderable(renderer, {
     width: "100%",
     flexGrow: 1,
+    backgroundColor: "#111a33",
+    focusedBackgroundColor: "#111a33",
     options: worktrees.map((worktree) => ({
       name: worktree.branch,
       description: worktree.path,
@@ -485,6 +513,8 @@ async function main(): Promise<void> {
     },
   });
   terminalPanel.add(terminal);
+  applyEmbeddedTerminalPalette(configEditor, terminalPalette);
+  applyEmbeddedTerminalPalette(terminal, terminalPalette);
   body.add(worktreePanel);
   body.add(terminalPanel);
   // root.add(header);
@@ -492,6 +522,16 @@ async function main(): Promise<void> {
   root.add(body);
   root.add(footer);
   renderer.root.add(root);
+
+  const syncTerminalBackground = (palette: TerminalColors): void => {
+    const background = palette.defaultBackground ?? fallbackTerminalBackground;
+    root.backgroundColor = background;
+    terminalPanel.backgroundColor = background;
+    configEditorPanel.backgroundColor = background;
+    applyEmbeddedTerminalPalette(configEditor, palette);
+    applyEmbeddedTerminalPalette(terminal, palette);
+  };
+  renderer.on("palette", syncTerminalBackground);
 
   const stopPty = (): void => {
     if (currentPty) {
@@ -579,7 +619,7 @@ async function main(): Promise<void> {
         cols: Math.max(20, terminal.width),
         rows: Math.max(8, terminal.height),
         cwd: worktree.path,
-        env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" },
+        env: { ...process.env, TERM: "xterm-256color", COLORTERM: "" },
       });
       currentPty.onData((data) => {
         terminal.write(data);
@@ -778,6 +818,7 @@ async function main(): Promise<void> {
   keyInput.addListener("keypress", onKeyPress);
   renderer.once("destroy", () => {
     keyInput.removeListener("keypress", onKeyPress);
+    renderer.off("palette", syncTerminalBackground);
     stopPty();
     if (configPty) configPty.kill();
   });

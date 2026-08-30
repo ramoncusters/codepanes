@@ -24,6 +24,14 @@ User configuration is stored in `~/.config/codepanes/config.json`. Keybindings
 are nested by tab name, can be global or scoped to a repository, and each
 binding has a display `name`. Press `?` to view the current tab's bindings.
 The `Global` bindings apply on every tab.
+
+The Lazygit and configuration-editor panes configure their embedded terminal
+emulators with the host terminal's detected 16-color ANSI palette and default
+foreground/background. This keeps embedded programs aligned with the terminal
+emulator's theme. Lazygit runs in indexed 256-color mode so its colors honor
+that palette instead of using fixed truecolor values. If the emulator does not
+support palette queries, CodePanes falls back to its built-in dark background.
+
 Repository-specific commands can run after creating a worktree:
 
 ```json
