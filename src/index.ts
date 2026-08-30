@@ -102,6 +102,25 @@ async function findLazygit(): Promise<string> {
   throw new Error("lazygit was not found in PATH. Install it with `brew install lazygit` or add it to PATH.");
 }
 
+async function findShell(): Promise<string> {
+  const candidates = [process.env.SHELL, process.platform === "darwin" ? "/bin/zsh" : "/bin/sh"].filter(
+    (candidate): candidate is string => Boolean(candidate),
+  );
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      await access(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // Try the next shell candidate.
+    }
+  }
+  throw new Error("No executable shell was found.");
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 async function main(): Promise<void> {
   const cwd = process.cwd();
   const config = await loadConfig();
@@ -594,6 +613,7 @@ async function main(): Promise<void> {
 
     try {
       const lazygitPath = await findLazygit();
+      const shellPath = await findShell();
       await access(worktree.path, constants.R_OK | constants.X_OK);
       try {
         await execFileAsync(lazygitPath, ["--version"], {
@@ -604,17 +624,12 @@ async function main(): Promise<void> {
         const details = error instanceof Error ? error.message : String(error);
         throw new Error(`lazygit preflight failed (${lazygitPath}, cwd ${worktree.path}): ${details}`);
       }
-      currentPty = pty.spawn(lazygitPath, [], {
+      currentPty = pty.spawn(shellPath, ["-lc", `exec ${shellQuote(lazygitPath)}`], {
         name: "xterm-256color",
         cols: Math.max(20, terminal.width),
         rows: Math.max(8, terminal.height),
         cwd: worktree.path,
-        env: {
-          ...process.env,
-          PATH: `${path.dirname(lazygitPath)}${path.delimiter}${process.env.PATH ?? ""}`,
-          TERM: "xterm-256color",
-          COLORTERM: "truecolor",
-        },
+        env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" },
       });
       currentPty.onData((data) => {
         terminal.write(data);
