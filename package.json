@@ -4,6 +4,9 @@
   "description": "TUI for managing Git worktrees with lazygit integration",
   "type": "module",
   "main": "dist/main.js",
+  "bin": {
+    "codepanes": "scripts/cli.mjs"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "tsc",

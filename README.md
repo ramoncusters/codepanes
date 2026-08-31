@@ -17,6 +17,15 @@ are cleaned up before each restart.
 
 `lazygit` must be installed and available in `PATH`.
 
+To install the command globally from a local checkout:
+
+```bash
+npm install -g /path/to/codepanes
+```
+
+Then run `codepanes` from any Git repository. The command preserves the
+current working directory and uses it as the repository to manage.
+
 Controls: use `Up`/`Down` and `Enter` to open a worktree, `Tab` to switch
 between the Worktrees and Lazygit tabs, and `Q` to quit.
 
