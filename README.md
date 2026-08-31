@@ -26,6 +26,11 @@ npm install -g /path/to/codepanes
 Then run `codepanes` from any Git repository. The command preserves the
 current working directory and uses it as the repository to manage.
 
+The `codepanes` launcher requires Node.js 26.4 or newer. It selects an
+installed Node 26 runtime when available and does not change the user's
+default Node environment. If no suitable runtime is installed, it exits with
+an installation error.
+
 Controls: use `Up`/`Down` and `Enter` to open a worktree, `Tab` to switch
 between the Worktrees and Lazygit tabs, and `Q` to quit.
 
