@@ -1,6 +1,8 @@
 import type { Worktree } from "../types.js";
 
-export type PromptMode = "create" | "delete" | "delete-branches" | null;
+import type { Theme } from "../services/themes.js";
+
+export type PromptMode = "create" | "delete" | "delete-branches" | "apply-theme" | null;
 
 export type AppState = {
   activeTab: number;
@@ -12,6 +14,7 @@ export type AppState = {
   configInstructionsActive: boolean;
   promptMode: PromptMode;
   pendingDeleteTargets: Worktree[];
+  pendingTheme: Theme | null;
 };
 
 export function createAppState(): AppState {
@@ -25,5 +28,6 @@ export function createAppState(): AppState {
     configInstructionsActive: false,
     promptMode: null,
     pendingDeleteTargets: [],
+    pendingTheme: null,
   };
 }

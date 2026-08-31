@@ -1,4 +1,5 @@
 import { BoxRenderable, InputRenderable, TextRenderable, type CliRenderer } from "@opentui/core";
+import type { Theme } from "../services/themes.js";
 
 export class Prompt {
   readonly panel: BoxRenderable;
@@ -18,7 +19,7 @@ export class Prompt {
       backgroundColor: "#111a33",
       padding: 1,
       visible: false,
-      zIndex: 10,
+      zIndex: 35,
     });
     this.label = new TextRenderable(renderer, { content: "" });
     this.input = new InputRenderable(renderer, {
@@ -28,5 +29,14 @@ export class Prompt {
     });
     this.panel.add(this.label);
     this.panel.add(this.input);
+  }
+
+  applyTheme(theme: Theme): void {
+    this.panel.backgroundColor = theme.panelBackground;
+    this.panel.borderColor = theme.accent;
+    this.label.fg = theme.text;
+    this.input.backgroundColor = theme.inputBackground;
+    this.input.focusedBackgroundColor = theme.focusedBackground;
+    this.input.textColor = theme.text;
   }
 }

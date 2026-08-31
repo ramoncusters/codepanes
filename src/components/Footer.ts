@@ -1,4 +1,5 @@
 import { BoxRenderable, TextRenderable, type CliRenderer } from "@opentui/core";
+import type { Theme } from "../services/themes.js";
 
 export class Footer {
   readonly panel: BoxRenderable;
@@ -15,5 +16,10 @@ export class Footer {
       fg: "#aab7d8",
     });
     this.panel.add(this.text);
+  }
+
+  applyTheme(theme: Theme): void {
+    this.panel.backgroundColor = theme.panelBackground;
+    this.text.fg = theme.muted;
   }
 }

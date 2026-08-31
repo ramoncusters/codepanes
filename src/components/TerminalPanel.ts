@@ -8,6 +8,7 @@ import type { IPty } from "node-pty";
 import { applyEmbeddedTerminalPalette } from "../services/terminalPalette.js";
 import { spawnPty } from "../services/pty.js";
 import type { Worktree } from "../types.js";
+import type { Theme } from "../services/themes.js";
 
 export class TerminalPanel {
   readonly panel: BoxRenderable;
@@ -44,6 +45,11 @@ export class TerminalPanel {
 
   applyPalette(palette: TerminalColors): void {
     applyEmbeddedTerminalPalette(this.terminal, palette);
+  }
+
+  applyTheme(theme: Theme): void {
+    this.panel.backgroundColor = theme.background;
+    this.panel.borderColor = theme.border;
   }
 
   stop(): void {

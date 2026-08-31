@@ -32,13 +32,23 @@ default Node environment. If no suitable runtime is installed, it exits with
 an installation error.
 
 Controls: use `Up`/`Down` and `Enter` to open a worktree, `Tab` to switch
-between the Worktrees and Lazygit tabs, and `Q` to quit.
+between the Worktrees and Lazygit tabs, `t` to open the theme switcher, and
+`Q` to quit.
 
 User configuration is stored in `~/.config/codepanes/config.json`. Keybindings
 are nested by tab name, can be global or scoped to a repository, and each
 binding has a display `name`. Press `?` on the Worktrees tab to view its bindings.
 The `Global` bindings apply on every tab. On the Lazygit tab, `?` is passed
 through to Lazygit rather than opening CodePanes keybinding help.
+
+Press `t` to open the floating theme switcher. Moving through the theme list
+previews themes immediately. Press `Enter` on a theme and confirm with `y` to
+save it as the active theme; `n` or `Esc` cancels the preview.
+
+Themes are JSON files stored in `~/.config/codepanes/themes`. CodePanes copies
+the bundled themes there on first start, and loads every `.json` file in that
+directory. Add a file with the same fields as an existing theme to make a
+custom theme available in the switcher.
 
 The Lazygit and configuration-editor panes configure their embedded terminal
 emulators with the host terminal's detected 16-color ANSI palette and default
@@ -53,7 +63,8 @@ Repository-specific commands can run after creating a worktree:
 {
   "globalKeybindings": {
     "Global": {
-      "C": { "name": "Edit configuration", "action": "edit-config" }
+      "C": { "name": "Edit configuration", "action": "edit-config" },
+      "t": { "name": "Switch theme", "action": "switch-theme" }
     },
     "Worktrees": {
       "spacebar": { "name": "Select worktrees", "action": "select-worktrees" },

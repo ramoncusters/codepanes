@@ -5,6 +5,7 @@ import {
   type TerminalColors,
 } from "@opentui/core";
 import { applyEmbeddedTerminalPalette } from "../services/terminalPalette.js";
+import type { Theme } from "../services/themes.js";
 
 export class CommandOutputPanel {
   readonly panel: BoxRenderable;
@@ -39,5 +40,11 @@ export class CommandOutputPanel {
 
   setBackgroundColor(backgroundColor: string): void {
     this.panel.backgroundColor = backgroundColor;
+  }
+
+  applyTheme(theme: Theme): void {
+    this.panel.backgroundColor = theme.background;
+    this.panel.borderColor = theme.border;
+    this.panel.titleColor = theme.accent;
   }
 }

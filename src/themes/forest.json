@@ -1,0 +1,12 @@
+{
+  "id": "forest",
+  "name": "Forest",
+  "background": "#0d1b16",
+  "panelBackground": "#153326",
+  "inputBackground": "#0a1410",
+  "focusedBackground": "#24543b",
+  "border": "#3d8b61",
+  "accent": "#9fe870",
+  "text": "#f1f8e9",
+  "muted": "#b8d0ba"
+}

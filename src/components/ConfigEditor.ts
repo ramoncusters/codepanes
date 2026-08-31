@@ -6,6 +6,7 @@ import {
 } from "@opentui/core";
 import type { IPty } from "node-pty";
 import { spawnPty } from "../services/pty.js";
+import type { Theme } from "../services/themes.js";
 
 export class ConfigEditor {
   readonly panel: BoxRenderable;
@@ -68,7 +69,7 @@ export class ConfigEditor {
         "",
         "Available actions",
         "  select-worktrees, search-worktrees, create-worktree, delete-worktrees",
-        "  edit-config",
+        "  edit-config, switch-theme",
         "",
         "Example:",
         "  \"Worktrees\": {",
@@ -94,6 +95,14 @@ export class ConfigEditor {
     });
     this.panel.add(this.instructionsPanel);
     this.panel.add(this.editor);
+  }
+
+  applyTheme(theme: Theme): void {
+    this.panel.backgroundColor = theme.background;
+    this.panel.borderColor = theme.accent;
+    this.instructionsPanel.backgroundColor = theme.panelBackground;
+    this.instructionsPanel.borderColor = theme.accent;
+    this.instructionsText.fg = theme.text;
   }
 
   async open(): Promise<void> {

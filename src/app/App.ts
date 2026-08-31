@@ -26,7 +26,9 @@ import { KeybindingsHelp } from "../components/KeybindingsHelp.js";
 import { ConfigEditor } from "../components/ConfigEditor.js";
 import { createTabs } from "../components/Tabs.js";
 import { Footer } from "../components/Footer.js";
+import { ThemeSwitcher } from "../components/ThemeSwitcher.js";
 import { runCommand } from "../services/commands.js";
+import { getTheme, loadThemes, type Theme } from "../services/themes.js";
 import type { Action, TabName, Worktree } from "../types.js";
 import type { IPty } from "node-pty";
 import { createKeybindingResolver, ensureDefaultKeybindings } from "./keybindings.js";
@@ -42,6 +44,7 @@ type KeyInputEvents = {
 export async function runApp(): Promise<void> {
   const cwd = process.cwd();
   const config = await loadConfig();
+  const availableThemes = await loadThemes();
   if (!config.globalKeybindings?.Global) {
     ensureDefaultKeybindings(config);
     await saveConfig(config);
@@ -61,6 +64,8 @@ export async function runApp(): Promise<void> {
   });
   const terminalPalette = await renderer.getPalette();
   const terminalBackground = terminalPalette.defaultBackground ?? fallbackTerminalBackground;
+  let appliedTheme = getTheme(availableThemes, config.theme);
+  let committedTheme = appliedTheme;
 
   const root = new BoxRenderable(renderer, {
     width: "100%",
@@ -122,6 +127,11 @@ export async function runApp(): Promise<void> {
   const keybindingsText = keybindingsHelp.text;
   root.add(promptPanel);
   root.add(keybindingsPanel);
+  const themeSwitcher = new ThemeSwitcher(renderer, availableThemes, (theme) => {
+    appliedTheme = theme;
+    renderTheme(theme);
+  }, (theme) => beginThemeConfirmation(theme));
+  root.add(themeSwitcher.panel);
 
   const refreshWorktrees = async (): Promise<void> => {
     await worktreesPanel.refresh();
@@ -135,6 +145,31 @@ export async function runApp(): Promise<void> {
     promptInput.blur();
     select.focus();
   };
+
+  const closeThemeSwitcher = (restore = true): void => {
+    if (restore) {
+      appliedTheme = committedTheme;
+      renderTheme(committedTheme);
+    }
+    state.pendingTheme = null;
+    themeSwitcher.panel.visible = false;
+    themeSwitcher.select.blur();
+    if (state.activeTab === 0) select.focus();
+    else terminal.focus();
+  };
+
+  function renderTheme(theme: Theme): void {
+    root.backgroundColor = theme.background;
+    worktreesPanel.applyTheme(theme);
+    lazygitTerminal.applyTheme(theme);
+    configEditor.applyTheme(theme);
+    footer.applyTheme(theme);
+    prompt.applyTheme(theme);
+    keybindingsHelp.applyTheme(theme);
+    themeSwitcher.applyTheme(theme);
+    tabs.selectedTextColor = theme.text;
+    tabs.focusedTextColor = theme.text;
+  }
 
   const closeKeybindings = (): void => {
     state.keybindingsActive = false;
@@ -196,6 +231,29 @@ export async function runApp(): Promise<void> {
     promptInput.focus();
   };
 
+  const openThemeSwitcher = (): void => {
+    if (state.configEditorActive || state.keybindingsActive || state.promptActive) return;
+    themeSwitcher.panel.visible = true;
+    themeSwitcher.select.setSelectedIndex(
+      Math.max(0, availableThemes.findIndex((theme) => theme.id === committedTheme.id)),
+    );
+    themeSwitcher.select.focus();
+    select.blur();
+    terminal.blur();
+  };
+
+  function beginThemeConfirmation(theme: Theme): void {
+    appliedTheme = theme;
+    state.pendingTheme = theme;
+    state.promptMode = "apply-theme";
+    state.promptActive = true;
+    promptLabel.content = `Apply the ${theme.name} theme? Type y or n:`;
+    promptInput.value = "";
+    promptPanel.visible = true;
+    themeSwitcher.select.blur();
+    promptInput.focus();
+  }
+
   const focusTerminal = async (): Promise<void> => {
     if (renderer.isDestroyed || state.activeTab !== 1 || state.configEditorActive || state.keybindingsActive || state.promptActive || state.searchActive) {
       return;
@@ -225,13 +283,10 @@ export async function runApp(): Promise<void> {
   root.add(body);
   root.add(footerPanel);
   renderer.root.add(root);
+  renderTheme(appliedTheme);
 
   const syncTerminalBackground = (palette: TerminalColors): void => {
-    const background = palette.defaultBackground ?? fallbackTerminalBackground;
-    root.backgroundColor = background;
-    worktreesPanel.setBackgroundColor(background);
-    terminalPanel.backgroundColor = background;
-    configEditorPanel.backgroundColor = background;
+    root.backgroundColor = appliedTheme.background;
     applyEmbeddedTerminalPalette(configEditorRenderable, palette);
     lazygitTerminal.applyPalette(palette);
     worktreesPanel.applyPalette(palette);
@@ -352,6 +407,32 @@ export async function runApp(): Promise<void> {
   promptInput.on(InputRenderableEvents.ENTER, () => {
     const value = promptInput.value.trim();
     const mode = state.promptMode;
+    if (mode === "apply-theme") {
+      const answer = value.toLowerCase();
+      if (answer !== "y" && answer !== "n") {
+        footerText.content = "Please type y or n to choose whether to apply the theme.";
+        return;
+      }
+      const accepted = answer === "y";
+      state.promptActive = false;
+      state.promptMode = null;
+      state.pendingTheme = null;
+      promptPanel.visible = false;
+      promptInput.blur();
+      if (accepted) {
+        committedTheme = appliedTheme;
+        config.theme = committedTheme.id;
+        void saveConfig(config).catch((error: unknown) => {
+          footerText.content = `Unable to save theme: ${String(error)}`;
+        });
+        themeSwitcher.panel.visible = false;
+        if (state.activeTab === 0) select.focus();
+        else terminal.focus();
+      } else {
+        closeThemeSwitcher();
+      }
+      return;
+    }
     closePrompt();
     if (mode === "create") {
       void createWorktree(value).catch((error: unknown) => {
@@ -394,6 +475,10 @@ export async function runApp(): Promise<void> {
         if (state.activeTab === 0) select.focus();
         else terminal.focus();
       });
+      return;
+    }
+    if (action === "switch-theme") {
+      openThemeSwitcher();
       return;
     }
     if (state.activeTab !== 0) return;
@@ -439,6 +524,21 @@ export async function runApp(): Promise<void> {
       if (key.name === "?" || (state.configInstructionsActive && key.name === "escape")) {
         key.preventDefault();
         toggleConfigInstructions();
+      }
+      return;
+    }
+    if (state.promptActive && state.promptMode === "apply-theme") {
+      if (key.name === "escape") {
+        key.preventDefault();
+        closePrompt();
+        closeThemeSwitcher();
+      }
+      return;
+    }
+    if (themeSwitcher.panel.visible) {
+      if (key.name === "escape") {
+        key.preventDefault();
+        closeThemeSwitcher();
       }
       return;
     }

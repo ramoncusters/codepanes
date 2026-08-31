@@ -1,0 +1,12 @@
+{
+  "id": "solarized",
+  "name": "Solarized",
+  "background": "#002b36",
+  "panelBackground": "#073642",
+  "inputBackground": "#00212b",
+  "focusedBackground": "#586e75",
+  "border": "#268bd2",
+  "accent": "#b58900",
+  "text": "#fdf6e3",
+  "muted": "#93a1a1"
+}

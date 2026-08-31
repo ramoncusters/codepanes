@@ -1,0 +1,12 @@
+{
+  "id": "midnight",
+  "name": "Midnight",
+  "background": "#0b1020",
+  "panelBackground": "#111a33",
+  "inputBackground": "#0b1020",
+  "focusedBackground": "#18264a",
+  "border": "#2b3c68",
+  "accent": "#7dd3fc",
+  "text": "#ffffff",
+  "muted": "#aab7d8"
+}

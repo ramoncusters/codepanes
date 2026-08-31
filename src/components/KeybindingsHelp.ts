@@ -1,4 +1,5 @@
 import { BoxRenderable, TextRenderable, type CliRenderer } from "@opentui/core";
+import type { Theme } from "../services/themes.js";
 
 export class KeybindingsHelp {
   readonly panel: BoxRenderable;
@@ -21,5 +22,11 @@ export class KeybindingsHelp {
     });
     this.text = new TextRenderable(renderer, { content: "" });
     this.panel.add(this.text);
+  }
+
+  applyTheme(theme: Theme): void {
+    this.panel.backgroundColor = theme.panelBackground;
+    this.panel.borderColor = theme.accent;
+    this.text.fg = theme.text;
   }
 }

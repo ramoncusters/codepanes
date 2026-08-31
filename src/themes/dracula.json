@@ -1,0 +1,12 @@
+{
+  "id": "dracula",
+  "name": "Dracula",
+  "background": "#282a36",
+  "panelBackground": "#44475a",
+  "inputBackground": "#21222c",
+  "focusedBackground": "#6272a4",
+  "border": "#bd93f9",
+  "accent": "#50fa7b",
+  "text": "#f8f8f2",
+  "muted": "#bdc0d0"
+}

@@ -8,6 +8,7 @@ import {
   type TerminalColors,
 } from "@opentui/core";
 import { getWorktrees } from "../services/git.js";
+import type { Theme } from "../services/themes.js";
 import type { Worktree } from "../types.js";
 import { CommandOutputPanel } from "./CommandOutputPanel.js";
 
@@ -17,8 +18,10 @@ export class WorktreesPanel {
   readonly select: SelectRenderable;
   readonly searchBar: BoxRenderable;
   readonly searchInput: InputRenderable;
+  readonly searchLabel: TextRenderable;
   readonly selectedWorktrees = new Set<string>();
   private worktrees: Worktree[];
+  private readonly listPanel: BoxRenderable;
 
   constructor(
     renderer: CliRenderer,
@@ -35,7 +38,7 @@ export class WorktreesPanel {
       borderColor: "#2b3c68",
       backgroundColor,
     });
-    const listPanel = new BoxRenderable(renderer, {
+    this.listPanel = new BoxRenderable(renderer, {
       flexGrow: 1,
       flexBasis: 0,
       flexDirection: "column",
@@ -61,7 +64,8 @@ export class WorktreesPanel {
       backgroundColor: "#0b1020",
       focusedBackgroundColor: "#18264a",
     });
-    this.searchBar.add(new TextRenderable(renderer, { content: "Filter: ", fg: "#aab7d8" }));
+    this.searchLabel = new TextRenderable(renderer, { content: "Filter: ", fg: "#aab7d8" });
+    this.searchBar.add(this.searchLabel);
     this.searchBar.add(this.searchInput);
     this.select = new SelectRenderable(renderer, {
       width: "100%",
@@ -72,10 +76,10 @@ export class WorktreesPanel {
       showDescription: true,
       selectedTextColor: "#ffffff",
     });
-    listPanel.add(this.select);
-    listPanel.add(this.searchBar);
+    this.listPanel.add(this.select);
+    this.listPanel.add(this.searchBar);
     this.output = new CommandOutputPanel(renderer, backgroundColor);
-    this.panel.add(listPanel);
+    this.panel.add(this.listPanel);
     this.panel.add(this.output.panel);
     this.searchInput.on(InputRenderableEvents.INPUT, () => {
       void this.refresh();
@@ -102,6 +106,22 @@ export class WorktreesPanel {
     this.searchBar.backgroundColor = backgroundColor;
     this.select.backgroundColor = backgroundColor;
     this.select.focusedBackgroundColor = backgroundColor;
+  }
+
+  applyTheme(theme: Theme): void {
+    this.panel.backgroundColor = theme.background;
+    this.panel.borderColor = theme.border;
+    this.listPanel.backgroundColor = theme.panelBackground;
+    this.listPanel.borderColor = theme.border;
+    this.listPanel.titleColor = theme.accent;
+    this.searchBar.backgroundColor = theme.panelBackground;
+    this.select.backgroundColor = theme.panelBackground;
+    this.select.focusedBackgroundColor = theme.focusedBackground;
+    this.select.selectedTextColor = theme.text;
+    this.searchLabel.fg = theme.muted;
+    this.searchInput.backgroundColor = theme.inputBackground;
+    this.searchInput.focusedBackgroundColor = theme.focusedBackground;
+    this.output.applyTheme(theme);
   }
 
   applyPalette(palette: TerminalColors): void {

@@ -9,16 +9,21 @@ const defaultKeybindings: Record<string, Keybinding> = {
 
 const defaultGlobalKeybindings: Record<string, Keybinding> = {
   C: { name: "Edit configuration", action: "edit-config" },
+  t: { name: "Switch theme", action: "switch-theme" },
 };
 
 export function ensureDefaultKeybindings(config: Config): void {
-  if (!config.globalKeybindings?.Global) {
-    config.globalKeybindings = {
-      ...config.globalKeybindings,
-      Global: defaultGlobalKeybindings,
-      Worktrees: config.globalKeybindings?.Worktrees ?? defaultKeybindings,
-    };
-  }
+  config.globalKeybindings = {
+    ...config.globalKeybindings,
+    Global: {
+      ...defaultGlobalKeybindings,
+      ...config.globalKeybindings?.Global,
+    },
+    Worktrees: {
+      ...defaultKeybindings,
+      ...config.globalKeybindings?.Worktrees,
+    },
+  };
 }
 
 export function createKeybindingResolver(

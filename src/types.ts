@@ -6,9 +6,11 @@ export type Action =
   | "search-worktrees"
   | "create-worktree"
   | "delete-worktrees"
-  | "edit-config";
+  | "edit-config"
+  | "switch-theme";
 export type TabKeybindings = Partial<Record<TabName, Record<string, Keybinding>>>;
 export type Config = {
+  theme?: string;
   globalKeybindings?: TabKeybindings;
   repositories?: Record<string, { keybindings?: TabKeybindings; postCreateActions?: string[] }>;
 };
