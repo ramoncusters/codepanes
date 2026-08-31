@@ -15,6 +15,7 @@ export type AppState = {
   promptMode: PromptMode;
   pendingDeleteTargets: Worktree[];
   pendingTheme: Theme | null;
+  worktreeOperationActive: boolean;
 };
 
 export function createAppState(): AppState {
@@ -29,5 +30,6 @@ export function createAppState(): AppState {
     promptMode: null,
     pendingDeleteTargets: [],
     pendingTheme: null,
+    worktreeOperationActive: false,
   };
 }

@@ -357,34 +357,58 @@ export async function runApp(): Promise<void> {
     const selectedPath = [...selectedWorktrees][0];
     const base = selectedPath ? worktrees.find((worktree) => worktree.path === selectedPath)?.branch : "main";
     const target = path.join(root, branchName);
+    state.worktreeOperationActive = true;
+    worktreesPanel.beginCreating({ path: target, branch: branchName });
     let branchExists = false;
     try {
-      await execFileAsync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`], { cwd: root });
-      branchExists = true;
-    } catch {
-      branchExists = false;
+      try {
+        await execFileAsync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`], { cwd: root });
+        branchExists = true;
+      } catch {
+        branchExists = false;
+      }
+      const args = branchExists
+        ? ["worktree", "add", target, branchName]
+        : ["worktree", "add", "-b", branchName, target, base ?? "main"];
+      await runLoggedGitCommand(args, root);
+      await runPostCreateActions(target);
+      worktreesPanel.clearOperation(target);
+      await refreshWorktrees();
+      footerText.content = `Created ${branchName}`;
+    } catch (error) {
+      worktreesPanel.setOperation(target, "failed");
+      setTimeout(() => worktreesPanel.removeOperation(target), 3000);
+      throw error;
+    } finally {
+      state.worktreeOperationActive = false;
     }
-    const args = branchExists
-      ? ["worktree", "add", target, branchName]
-      : ["worktree", "add", "-b", branchName, target, base ?? "main"];
-    await runLoggedGitCommand(args, root);
-    await runPostCreateActions(target);
-    await refreshWorktrees();
-    footerText.content = `Created ${branchName}`;
   };
 
   const deleteWorktrees = async (targets: Worktree[], deleteBranches: boolean): Promise<void> => {
     const root = await bareRoot(cwd);
-    for (let index = 0; index < targets.length; index += 1) {
-      footerText.content = `Deleting ${index + 1}/${targets.length}: ${targets[index].branch}`;
-      await runLoggedGitCommand(["worktree", "remove", "--force", targets[index].path], root);
-      if (deleteBranches && targets[index].branch !== "(detached)") {
-        await runLoggedGitCommand(["branch", "-D", targets[index].branch], root);
+    state.worktreeOperationActive = true;
+    for (const target of targets) worktreesPanel.setOperation(target.path, "deleting");
+    try {
+      for (let index = 0; index < targets.length; index += 1) {
+        try {
+          footerText.content = `Deleting ${index + 1}/${targets.length}: ${targets[index].branch}`;
+          await runLoggedGitCommand(["worktree", "remove", "--force", targets[index].path], root);
+          if (deleteBranches && targets[index].branch !== "(detached)") {
+            await runLoggedGitCommand(["branch", "-D", targets[index].branch], root);
+          }
+          worktreesPanel.clearOperation(targets[index].path);
+          selectedWorktrees.delete(targets[index].path);
+        } catch (error) {
+          worktreesPanel.setOperation(targets[index].path, "failed");
+          for (const remaining of targets.slice(index + 1)) worktreesPanel.clearOperation(remaining.path);
+          throw error;
+        }
       }
-      selectedWorktrees.delete(targets[index].path);
+      await refreshWorktrees();
+      footerText.content = `Deleted ${targets.length} worktree${targets.length === 1 ? "" : "s"}`;
+    } finally {
+      state.worktreeOperationActive = false;
     }
-    await refreshWorktrees();
-    footerText.content = `Deleted ${targets.length} worktree${targets.length === 1 ? "" : "s"}`;
   };
 
   const updateTab = (index: number): void => {
@@ -410,6 +434,7 @@ export async function runApp(): Promise<void> {
   const openWorktree = (worktree: Worktree): Promise<void> => lazygitTerminal.open(worktree);
 
   select.on(SelectRenderableEvents.ITEM_SELECTED, async (_index, option) => {
+    if (state.worktreeOperationActive) return;
     select.blur();
     tabs.setSelectedIndex(1);
     state.activeTab = 1;
@@ -641,6 +666,7 @@ export async function runApp(): Promise<void> {
     renderer.off("palette", syncTerminalBackground);
     stopPty();
     configEditor.close();
+    worktreesPanel.dispose();
   });
 
   const shutdown = (signal: NodeJS.Signals): void => {
