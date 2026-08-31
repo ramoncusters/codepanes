@@ -5,12 +5,15 @@ import {
   SelectRenderable,
   TextRenderable,
   type CliRenderer,
+  type TerminalColors,
 } from "@opentui/core";
 import { getWorktrees } from "../services/git.js";
 import type { Worktree } from "../types.js";
+import { CommandOutputPanel } from "./CommandOutputPanel.js";
 
 export class WorktreesPanel {
   readonly panel: BoxRenderable;
+  readonly output: CommandOutputPanel;
   readonly select: SelectRenderable;
   readonly searchBar: BoxRenderable;
   readonly searchInput: InputRenderable;
@@ -20,16 +23,29 @@ export class WorktreesPanel {
   constructor(
     renderer: CliRenderer,
     initialWorktrees: Worktree[],
+    backgroundColor: string,
   ) {
     this.worktrees = initialWorktrees;
     this.panel = new BoxRenderable(renderer, {
       paddingTop: 1,
       flexGrow: 1,
-      flexDirection: "column",
+      flexDirection: "row",
       border: true,
       borderStyle: "rounded",
       borderColor: "#2b3c68",
-      backgroundColor: "#111a33",
+      backgroundColor,
+    });
+    const listPanel = new BoxRenderable(renderer, {
+      flexGrow: 1,
+      flexBasis: 0,
+      flexDirection: "column",
+      padding: 1,
+      border: true,
+      borderStyle: "rounded",
+      borderColor: "#2b3c68",
+      title: "overview",
+      titleColor: "#7dd3fc",
+      backgroundColor,
     });
     this.searchBar = new BoxRenderable(renderer, {
       height: 1,
@@ -37,7 +53,7 @@ export class WorktreesPanel {
       paddingLeft: 1,
       flexDirection: "row",
       flexShrink: 0,
-      backgroundColor: "#111a33",
+      backgroundColor,
       visible: false,
     });
     this.searchInput = new InputRenderable(renderer, {
@@ -50,14 +66,17 @@ export class WorktreesPanel {
     this.select = new SelectRenderable(renderer, {
       width: "100%",
       flexGrow: 1,
-      backgroundColor: "#111a33",
-      focusedBackgroundColor: "#111a33",
+      backgroundColor,
+      focusedBackgroundColor: backgroundColor,
       options: [],
       showDescription: true,
       selectedTextColor: "#ffffff",
     });
-    this.panel.add(this.select);
-    this.panel.add(this.searchBar);
+    listPanel.add(this.select);
+    listPanel.add(this.searchBar);
+    this.output = new CommandOutputPanel(renderer, backgroundColor);
+    this.panel.add(listPanel);
+    this.panel.add(this.output.panel);
     this.searchInput.on(InputRenderableEvents.INPUT, () => {
       void this.refresh();
     });
@@ -65,7 +84,7 @@ export class WorktreesPanel {
   }
 
   get items(): Worktree[] {
-    return this.worktrees;
+    return this.worktrees.filter((worktree) => worktree.branch !== "(detached)");
   }
 
   async refresh(): Promise<void> {
@@ -77,9 +96,21 @@ export class WorktreesPanel {
     return this.select.getSelectedOption()?.value as Worktree | undefined;
   }
 
+  setBackgroundColor(backgroundColor: string): void {
+    this.panel.backgroundColor = backgroundColor;
+    this.output.setBackgroundColor(backgroundColor);
+    this.searchBar.backgroundColor = backgroundColor;
+    this.select.backgroundColor = backgroundColor;
+    this.select.focusedBackgroundColor = backgroundColor;
+  }
+
+  applyPalette(palette: TerminalColors): void {
+    this.output.applyPalette(palette);
+  }
+
   private updateOptions(): void {
     const query = this.searchInput.value.toLowerCase();
-    this.select.options = this.worktrees
+    this.select.options = this.items
       .filter((worktree) => `${worktree.branch} ${worktree.path}`.toLowerCase().includes(query))
       .map((worktree) => ({
         name: `${this.selectedWorktrees.has(worktree.path) ? "[x] " : ""}${worktree.branch}`,

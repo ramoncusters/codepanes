@@ -26,6 +26,7 @@ import { KeybindingsHelp } from "../components/KeybindingsHelp.js";
 import { ConfigEditor } from "../components/ConfigEditor.js";
 import { createTabs } from "../components/Tabs.js";
 import { Footer } from "../components/Footer.js";
+import { runCommand } from "../services/commands.js";
 import type { Action, TabName, Worktree } from "../types.js";
 import type { IPty } from "node-pty";
 import { createKeybindingResolver, ensureDefaultKeybindings } from "./keybindings.js";
@@ -105,7 +106,7 @@ export async function runApp(): Promise<void> {
   const configEditorRenderable = configEditor.editor;
   root.add(configEditorPanel);
 
-  const worktreesPanel = new WorktreesPanel(renderer, worktrees);
+  const worktreesPanel = new WorktreesPanel(renderer, worktrees, terminalBackground);
   const worktreePanel = worktreesPanel.panel;
   const select = worktreesPanel.select;
   const searchBar = worktreesPanel.searchBar;
@@ -216,6 +217,7 @@ export async function runApp(): Promise<void> {
   const terminal = lazygitTerminal.terminal;
   applyEmbeddedTerminalPalette(configEditorRenderable, terminalPalette);
   lazygitTerminal.applyPalette(terminalPalette);
+  worktreesPanel.applyPalette(terminalPalette);
   body.add(worktreePanel);
   body.add(terminalPanel);
   // root.add(header);
@@ -227,18 +229,39 @@ export async function runApp(): Promise<void> {
   const syncTerminalBackground = (palette: TerminalColors): void => {
     const background = palette.defaultBackground ?? fallbackTerminalBackground;
     root.backgroundColor = background;
+    worktreesPanel.setBackgroundColor(background);
     terminalPanel.backgroundColor = background;
     configEditorPanel.backgroundColor = background;
     applyEmbeddedTerminalPalette(configEditorRenderable, palette);
     lazygitTerminal.applyPalette(palette);
+    worktreesPanel.applyPalette(palette);
   };
   renderer.on("palette", syncTerminalBackground);
 
   const stopPty = (): void => lazygitTerminal.stop();
 
+  const runLoggedGitCommand = async (args: string[], cwd: string): Promise<void> => {
+    const command = `git ${args.map((arg) => (/^[\w./:-]+$/.test(arg) ? arg : JSON.stringify(arg))).join(" ")}`;
+    worktreesPanel.output.write(`\r\n$ ${command}\r\n`);
+    try {
+      await runCommand("git", args, { cwd }, (data) => worktreesPanel.output.write(data));
+      worktreesPanel.output.write(`\r\n[completed] ${command}\r\n`);
+    } catch (error) {
+      worktreesPanel.output.write(`\r\n[failed] ${command}: ${String(error)}\r\n`);
+      throw error;
+    }
+  };
+
   const runPostCreateActions = async (worktreePath: string): Promise<void> => {
     for (const action of repositoryConfig.postCreateActions ?? []) {
-      await execFileAsync("sh", ["-c", action], { cwd: worktreePath });
+      worktreesPanel.output.write(`\r\n$ ${action}\r\n`);
+      try {
+        await runCommand("sh", ["-c", action], { cwd: worktreePath }, (data) => worktreesPanel.output.write(data));
+        worktreesPanel.output.write(`\r\n[completed] ${action}\r\n`);
+      } catch (error) {
+        worktreesPanel.output.write(`\r\n[failed] ${String(error)}\r\n`);
+        throw error;
+      }
     }
   };
 
@@ -261,7 +284,7 @@ export async function runApp(): Promise<void> {
     const args = branchExists
       ? ["worktree", "add", target, branchName]
       : ["worktree", "add", "-b", branchName, target, base ?? "main"];
-    await execFileAsync("git", args, { cwd: root });
+    await runLoggedGitCommand(args, root);
     await runPostCreateActions(target);
     await refreshWorktrees();
     footerText.content = `Created ${branchName}`;
@@ -271,9 +294,9 @@ export async function runApp(): Promise<void> {
     const root = await bareRoot(cwd);
     for (let index = 0; index < targets.length; index += 1) {
       footerText.content = `Deleting ${index + 1}/${targets.length}: ${targets[index].branch}`;
-      await execFileAsync("git", ["worktree", "remove", "--force", targets[index].path], { cwd: root });
+      await runLoggedGitCommand(["worktree", "remove", "--force", targets[index].path], root);
       if (deleteBranches && targets[index].branch !== "(detached)") {
-        await execFileAsync("git", ["branch", "-D", targets[index].branch], { cwd: root });
+        await runLoggedGitCommand(["branch", "-D", targets[index].branch], root);
       }
       selectedWorktrees.delete(targets[index].path);
     }
