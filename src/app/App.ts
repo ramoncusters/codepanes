@@ -15,7 +15,7 @@ import {
   type KeyEvent,
   type TerminalColors,
 } from "@opentui/core";
-import { configPath, loadConfig, saveConfig } from "../services/config.js";
+import { configPath, loadConfig, projectName, saveConfig } from "../services/config.js";
 import { bareRoot, getWorktrees, gitRoot } from "../services/git.js";
 import { spawnPty } from "../services/pty.js";
 import { applyEmbeddedTerminalPalette } from "../services/terminalPalette.js";
@@ -50,8 +50,10 @@ export async function runApp(): Promise<void> {
     await saveConfig(config);
   }
   const repositoryRoot = await gitRoot(cwd);
-  const repositoryConfig = config.repositories?.[repositoryRoot] ?? {};
-  const getKeybindings = createKeybindingResolver(config, repositoryRoot);
+  const projectRoot = await bareRoot(cwd);
+  const currentProjectName = projectName(projectRoot);
+  const projectConfig = config.projects?.[currentProjectName] ?? {};
+  const getKeybindings = createKeybindingResolver(config, currentProjectName);
   let worktrees = await getWorktrees(cwd);
   const fallbackTerminalBackground = "#0b1020";
   const renderer = await createCliRenderer({
@@ -308,7 +310,7 @@ export async function runApp(): Promise<void> {
   };
 
   const runPostCreateActions = async (worktreePath: string): Promise<void> => {
-    for (const action of repositoryConfig.postCreateActions ?? []) {
+    for (const action of projectConfig.postCreateActions ?? []) {
       worktreesPanel.output.write(`\r\n$ ${action}\r\n`);
       try {
         await runCommand("sh", ["-c", action], { cwd: worktreePath }, (data) => worktreesPanel.output.write(data));
@@ -535,15 +537,18 @@ export async function runApp(): Promise<void> {
       }
       return;
     }
+    if (state.promptActive) {
+      if (key.name === "escape") {
+        key.preventDefault();
+        closePrompt();
+      }
+      return;
+    }
     if (themeSwitcher.panel.visible) {
       if (key.name === "escape") {
         key.preventDefault();
         closeThemeSwitcher();
       }
-      return;
-    }
-    if (!state.configEditorActive && key.name === "q" && !key.ctrl && !key.meta) {
-      renderer.destroy();
       return;
     }
     if (!state.configEditorActive && key.name === "tab") {
@@ -553,7 +558,11 @@ export async function runApp(): Promise<void> {
       updateTab(nextTab);
       return;
     }
-    if (state.activeTab === 1 && key.name === "?" && !key.ctrl && !key.meta) {
+    if (state.activeTab === 1) {
+      return;
+    }
+    if (!state.configEditorActive && key.name === "q" && !key.ctrl && !key.meta) {
+      renderer.destroy();
       return;
     }
     const globalBinding = !state.configEditorActive

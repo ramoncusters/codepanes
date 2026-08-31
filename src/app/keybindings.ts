@@ -28,14 +28,14 @@ export function ensureDefaultKeybindings(config: Config): void {
 
 export function createKeybindingResolver(
   config: Config,
-  repositoryRoot: string,
+  projectName: string,
 ): (tabName: TabName) => Record<string, Keybinding> {
-  const repositoryConfig = config.repositories?.[repositoryRoot] ?? {};
+  const projectConfig = config.projects?.[projectName] ?? {};
   return (tabName: TabName): Record<string, Keybinding> => ({
     ...defaultGlobalKeybindings,
     ...config.globalKeybindings?.Global,
     ...(tabName === "Worktrees" ? defaultKeybindings : {}),
     ...config.globalKeybindings?.[tabName],
-    ...repositoryConfig.keybindings?.[tabName],
+    ...projectConfig.keybindings?.[tabName],
   });
 }

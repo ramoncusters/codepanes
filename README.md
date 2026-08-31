@@ -36,10 +36,15 @@ between the Worktrees and Lazygit tabs, `t` to open the theme switcher, and
 `Q` to quit.
 
 User configuration is stored in `~/.config/codepanes/config.json`. Keybindings
-are nested by tab name, can be global or scoped to a repository, and each
+are nested by tab name, can be global or scoped to a project, and each
 binding has a display `name`. Press `?` on the Worktrees tab to view its bindings.
 The `Global` bindings apply on every tab. On the Lazygit tab, `?` is passed
 through to Lazygit rather than opening CodePanes keybinding help.
+
+Project-specific settings are keyed by the repository root directory name, so
+configuration does not require an absolute path or a package manager. For a
+bare repository ending in `.git`, the `.git` suffix is removed from the
+project name.
 
 Press `t` to open the floating theme switcher. Moving through the theme list
 previews themes immediately. Press `Enter` on a theme and confirm with `y` to
@@ -74,8 +79,8 @@ Repository-specific commands can run after creating a worktree:
     },
     "Lazygit": {}
   },
-  "repositories": {
-    "/path/to/repository": {
+  "projects": {
+    "my-project": {
       "keybindings": {
         "Worktrees": {},
         "Lazygit": {}

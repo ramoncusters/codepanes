@@ -5,6 +5,11 @@ import type { Config } from "../types.js";
 
 export const configPath = path.join(homedir(), ".config", "codepanes", "config.json");
 
+export function projectName(projectRoot: string): string {
+  const name = path.basename(projectRoot);
+  return name.endsWith(".git") ? name.slice(0, -".git".length) : name;
+}
+
 export async function loadConfig(): Promise<Config> {
   try {
     return JSON.parse(await readFile(configPath, "utf8")) as Config;
