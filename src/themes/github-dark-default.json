@@ -8,5 +8,7 @@
   "border": "#30363d",
   "accent": "#58a6ff",
   "text": "#e6edf3",
-  "muted": "#8b949e"
+  "muted": "#8b949e",
+  "success": "#3fb950",
+  "error": "#f85149"
 }

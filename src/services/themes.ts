@@ -14,6 +14,8 @@ export type Theme = {
   accent: string;
   text: string;
   muted: string;
+  success?: string;
+  error?: string;
 };
 
 export const themesPath = path.join(homedir(), ".config", "codepanes", "themes");

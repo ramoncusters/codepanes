@@ -11,6 +11,10 @@ export type Action =
 export type TabKeybindings = Partial<Record<TabName, Record<string, Keybinding>>>;
 export type Config = {
   theme?: string;
+  shell?: string;
   globalKeybindings?: TabKeybindings;
-  projects?: Record<string, { keybindings?: TabKeybindings; postCreateActions?: string[] }>;
+  projects?: Record<
+    string,
+    { shell?: string; keybindings?: TabKeybindings; postCreateActions?: string[] }
+  >;
 };

@@ -1,26 +1,30 @@
-import { spawn } from "node:child_process";
+import path from "node:path";
+import { spawnPty } from "./pty.js";
 
 export type CommandOutput = (data: string) => void;
 
-export function runCommand(
+export function runInteractiveCommand(
+  shell: string,
   command: string,
-  args: string[],
-  options: { cwd: string; env?: NodeJS.ProcessEnv },
+  options: { cwd: string; cols: number; rows: number },
   onOutput: CommandOutput,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const shellName = path.basename(shell).toLowerCase();
+    const exitCommand = shellName === "fish" ? "set code $status; exit $code" : "code=$?; exit $code";
+    const child = spawnPty(shell, ["-i"], {
       cwd: options.cwd,
-      env: { ...process.env, ...options.env },
-      stdio: ["ignore", "pipe", "pipe"],
+      cols: options.cols,
+      rows: options.rows,
+      name: "xterm-256color",
+      env: { SHELL: shell, TERM: "xterm-256color" },
     });
-    child.stdout.on("data", (data: Buffer) => onOutput(data.toString()));
-    child.stderr.on("data", (data: Buffer) => onOutput(data.toString()));
-    child.on("error", reject);
-    child.on("close", (code, signal) => {
-      if (signal) reject(new Error(`${command} terminated by ${signal}`));
-      else if (code !== 0) reject(new Error(`${command} exited with code ${code}`));
+    child.onData(onOutput);
+    child.onExit(({ exitCode, signal }) => {
+      if (signal) reject(new Error(`${shell} terminated by ${signal}`));
+      else if (exitCode !== 0) reject(new Error(`${shell} exited with code ${exitCode}`));
       else resolve();
     });
+    child.write(`${command}\n${exitCommand}\n`);
   });
 }

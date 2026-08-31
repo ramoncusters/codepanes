@@ -10,6 +10,7 @@ import type { Theme } from "../services/themes.js";
 export class CommandOutputPanel {
   readonly panel: BoxRenderable;
   readonly terminal: EmbeddedTerminalRenderable;
+  private pendingIconSequence = "";
 
   constructor(renderer: CliRenderer, backgroundColor: string) {
     this.panel = new BoxRenderable(renderer, {
@@ -35,7 +36,20 @@ export class CommandOutputPanel {
   }
 
   write(data: string): void {
-    this.terminal.write(data);
+    const filtered = this.filterIconSequence(`${this.pendingIconSequence}${data}`);
+    this.pendingIconSequence = filtered.pending;
+    if (filtered.output.length > 0) this.terminal.write(filtered.output);
+  }
+
+  writeMessage(data: string, color: string): void {
+    const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+    if (!match) {
+      this.write(`\r\n${data}\r\n`);
+      return;
+    }
+    this.write(
+      `\r\n\x1b[38;2;${Number.parseInt(match[1], 16)};${Number.parseInt(match[2], 16)};${Number.parseInt(match[3], 16)}m${data}\x1b[39m\r\n`,
+    );
   }
 
   setBackgroundColor(backgroundColor: string): void {
@@ -46,5 +60,23 @@ export class CommandOutputPanel {
     this.panel.backgroundColor = theme.background;
     this.panel.borderColor = theme.border;
     this.panel.titleColor = theme.accent;
+  }
+
+  private filterIconSequence(data: string): { output: string; pending: string } {
+    let output = "";
+    let cursor = 0;
+    while (cursor < data.length) {
+      const start = data.indexOf("\x1b]1;", cursor);
+      if (start === -1) {
+        return { output: output + data.slice(cursor), pending: "" };
+      }
+      output += data.slice(cursor, start);
+      const bell = data.indexOf("\x07", start + 3);
+      const terminator = data.indexOf("\x1b\\", start + 3);
+      const end = bell === -1 ? terminator : terminator === -1 ? bell : Math.min(bell, terminator);
+      if (end === -1) return { output, pending: data.slice(start) };
+      cursor = end + (end === bell ? 1 : 2);
+    }
+    return { output, pending: "" };
   }
 }

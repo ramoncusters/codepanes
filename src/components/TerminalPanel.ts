@@ -19,6 +19,7 @@ export class TerminalPanel {
   constructor(
     private readonly renderer: CliRenderer,
     private readonly onFocusChange: (focused: boolean) => void,
+    private readonly shell: string,
   ) {
     this.panel = new BoxRenderable(renderer, {
       paddingTop: 1,
@@ -70,7 +71,7 @@ export class TerminalPanel {
         cols: Math.max(20, this.terminal.width),
         rows: Math.max(8, this.terminal.height),
         cwd: worktree.path,
-        env: { TERM: "xterm-256color", COLORTERM: "" },
+        env: { TERM: "xterm-256color", COLORTERM: "", SHELL: this.shell },
       });
       this.currentPty.onData((data) => {
         this.terminal.write(data);

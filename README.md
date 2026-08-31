@@ -46,6 +46,10 @@ configuration does not require an absolute path or a package manager. For a
 bare repository ending in `.git`, the `.git` suffix is removed from the
 project name.
 
+Post-create actions use `sh` by default and run in interactive mode so the
+configured shell can load its startup configuration. Set `shell` globally, or
+override it for an individual project, to use another shell such as `zsh`:
+
 Press `t` to open the floating theme switcher. Moving through the theme list
 previews themes immediately. Press `Enter` on a theme and confirm with `y` to
 save it as the active theme; `n` or `Esc` cancels the preview.
@@ -81,6 +85,7 @@ Repository-specific commands can run after creating a worktree:
   },
   "projects": {
     "my-project": {
+      "shell": "zsh",
       "keybindings": {
         "Worktrees": {},
         "Lazygit": {}

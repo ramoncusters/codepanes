@@ -20,6 +20,7 @@ export class ConfigEditor {
     private readonly configPath: string,
     private readonly repositoryRoot: string,
     private readonly onExit: () => void,
+    private readonly shell: string,
     backgroundColor: string,
   ) {
     this.panel = new BoxRenderable(renderer, {
@@ -65,6 +66,7 @@ export class ConfigEditor {
         "projects",
         "  Project settings are keyed by the repository root directory name.",
         "  Project keybindings use the same Global/Worktrees/Lazygit structure.",
+        "  shell selects the executable used for postCreateActions (default: sh).",
         "  postCreateActions is a project-only list of shell commands run in a new worktree.",
         "",
         "Available actions",
@@ -113,7 +115,7 @@ export class ConfigEditor {
       cols: Math.max(20, this.editor.width),
       rows: Math.max(8, this.editor.height),
       cwd: this.repositoryRoot,
-      env: { TERM: "vt100", COLORTERM: "" },
+      env: { TERM: "vt100", COLORTERM: "", SHELL: this.shell },
     });
     this.configPty.onData((data) => this.editor.write(data));
     this.configPty.onExit(() => {

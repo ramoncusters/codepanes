@@ -27,7 +27,7 @@ import { ConfigEditor } from "../components/ConfigEditor.js";
 import { createTabs } from "../components/Tabs.js";
 import { Footer } from "../components/Footer.js";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.js";
-import { runCommand } from "../services/commands.js";
+import { runInteractiveCommand } from "../services/commands.js";
 import { getTheme, loadThemes, type Theme } from "../services/themes.js";
 import type { Action, TabName, Worktree } from "../types.js";
 import type { IPty } from "node-pty";
@@ -53,6 +53,7 @@ export async function runApp(): Promise<void> {
   const projectRoot = await bareRoot(cwd);
   const currentProjectName = projectName(projectRoot);
   const projectConfig = config.projects?.[currentProjectName] ?? {};
+  const commandShell = projectConfig.shell ?? config.shell ?? "sh";
   const getKeybindings = createKeybindingResolver(config, currentProjectName);
   let worktrees = await getWorktrees(cwd);
   const fallbackTerminalBackground = "#0b1020";
@@ -106,6 +107,7 @@ export async function runApp(): Promise<void> {
     () => {
       if (state.configEditorActive) closeConfigEditor();
     },
+    commandShell,
     terminalBackground,
   );
   const configEditorPanel = configEditor.panel;
@@ -270,9 +272,13 @@ export async function runApp(): Promise<void> {
     }
   };
 
-  const lazygitTerminal = new TerminalPanel(renderer, (focused) => {
-    state.terminalFocused = focused;
-  });
+  const lazygitTerminal = new TerminalPanel(
+    renderer,
+    (focused) => {
+      state.terminalFocused = focused;
+    },
+    commandShell,
+  );
   const terminalPanel = lazygitTerminal.panel;
   const terminal = lazygitTerminal.terminal;
   applyEmbeddedTerminalPalette(configEditorRenderable, terminalPalette);
@@ -298,25 +304,45 @@ export async function runApp(): Promise<void> {
   const stopPty = (): void => lazygitTerminal.stop();
 
   const runLoggedGitCommand = async (args: string[], cwd: string): Promise<void> => {
-    const command = `git ${args.map((arg) => (/^[\w./:-]+$/.test(arg) ? arg : JSON.stringify(arg))).join(" ")}`;
-    worktreesPanel.output.write(`\r\n$ ${command}\r\n`);
+    const quote = (arg: string): string => `'${arg.replaceAll("'", "'\\''")}'`;
+    const command = `git ${args.map(quote).join(" ")}`;
     try {
-      await runCommand("git", args, { cwd }, (data) => worktreesPanel.output.write(data));
-      worktreesPanel.output.write(`\r\n[completed] ${command}\r\n`);
+      await runInteractiveCommand(
+        commandShell,
+        command,
+        {
+          cwd,
+          cols: Math.max(20, worktreesPanel.output.terminal.width),
+          rows: Math.max(8, worktreesPanel.output.terminal.height),
+        },
+        (data) => worktreesPanel.output.write(data),
+      );
+      worktreesPanel.output.writeMessage(`[completed] ${command}`, appliedTheme.success ?? appliedTheme.accent);
     } catch (error) {
-      worktreesPanel.output.write(`\r\n[failed] ${command}: ${String(error)}\r\n`);
+      worktreesPanel.output.writeMessage(
+        `[failed] ${command}: ${String(error)}`,
+        appliedTheme.error ?? appliedTheme.accent,
+      );
       throw error;
     }
   };
 
   const runPostCreateActions = async (worktreePath: string): Promise<void> => {
     for (const action of projectConfig.postCreateActions ?? []) {
-      worktreesPanel.output.write(`\r\n$ ${action}\r\n`);
       try {
-        await runCommand("sh", ["-c", action], { cwd: worktreePath }, (data) => worktreesPanel.output.write(data));
-        worktreesPanel.output.write(`\r\n[completed] ${action}\r\n`);
+        await runInteractiveCommand(
+          commandShell,
+          action,
+          {
+            cwd: worktreePath,
+            cols: Math.max(20, worktreesPanel.output.terminal.width),
+            rows: Math.max(8, worktreesPanel.output.terminal.height),
+          },
+          (data) => worktreesPanel.output.write(data),
+        );
+        worktreesPanel.output.writeMessage(`[completed] ${action}`, appliedTheme.success ?? appliedTheme.accent);
       } catch (error) {
-        worktreesPanel.output.write(`\r\n[failed] ${String(error)}\r\n`);
+        worktreesPanel.output.writeMessage(`[failed] ${String(error)}`, appliedTheme.error ?? appliedTheme.accent);
         throw error;
       }
     }
