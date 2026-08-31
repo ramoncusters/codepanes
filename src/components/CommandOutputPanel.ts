@@ -11,6 +11,7 @@ export class CommandOutputPanel {
   readonly panel: BoxRenderable;
   readonly terminal: EmbeddedTerminalRenderable;
   private pendingIconSequence = "";
+  private pendingModeSequence = "";
 
   constructor(renderer: CliRenderer, backgroundColor: string) {
     this.panel = new BoxRenderable(renderer, {
@@ -36,9 +37,12 @@ export class CommandOutputPanel {
   }
 
   write(data: string): void {
-    const filtered = this.filterIconSequence(`${this.pendingIconSequence}${data}`);
-    this.pendingIconSequence = filtered.pending;
-    if (filtered.output.length > 0) this.terminal.write(filtered.output);
+    const iconFiltered = this.filterIconSequence(`${this.pendingIconSequence}${data}`);
+    this.pendingIconSequence = iconFiltered.pending;
+    const modeFiltered = this.filterModeSequence(`${this.pendingModeSequence}${iconFiltered.output}`);
+    this.pendingModeSequence = modeFiltered.pending;
+    if (modeFiltered.output.length > 0) this.terminal.write(modeFiltered.output);
+    if (this.pendingIconSequence.length > 0) return;
   }
 
   writeMessage(data: string, color: string): void {
@@ -76,6 +80,20 @@ export class CommandOutputPanel {
       const end = bell === -1 ? terminator : terminator === -1 ? bell : Math.min(bell, terminator);
       if (end === -1) return { output, pending: data.slice(start) };
       cursor = end + (end === bell ? 1 : 2);
+    }
+    return { output, pending: "" };
+  }
+
+  private filterModeSequence(data: string): { output: string; pending: string } {
+    let output = "";
+    let cursor = 0;
+    while (cursor < data.length) {
+      const start = data.indexOf("\x1b[?1034", cursor);
+      if (start === -1) return { output: output + data.slice(cursor), pending: "" };
+      output += data.slice(cursor, start);
+      const terminator = data.slice(start + "\x1b[?1034".length).search(/[hl]/);
+      if (terminator === -1) return { output, pending: data.slice(start) };
+      cursor = start + "\x1b[?1034".length + terminator + 1;
     }
     return { output, pending: "" };
   }
