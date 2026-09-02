@@ -5,6 +5,7 @@ const defaultKeybindings: Record<string, Keybinding> = {
   "/": { name: "Filter worktrees", action: "search-worktrees" },
   n: { name: "Create worktree", action: "create-worktree" },
   d: { name: "Delete worktrees", action: "delete-worktrees" },
+  x: { name: "Clear operations", action: "clear-operations" },
 };
 
 const defaultGlobalKeybindings: Record<string, Keybinding> = {

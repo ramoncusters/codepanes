@@ -96,5 +96,29 @@ Repository-specific commands can run after creating a worktree:
 }
 ```
 
+Worktree keybindings can run arbitrary shell commands using the selected
+worktree path:
+
+```json
+{
+  "globalKeybindings": {
+    "Worktrees": {
+      "o": {
+        "name": "Open Neovim",
+        "action": "run-command",
+        "command": "nvim {{worktreeDir}}",
+        "target": "external"
+      }
+    }
+  }
+}
+```
+
+The `{{worktreeDir}}` token is replaced with a shell-escaped absolute path,
+and `{{worktreeName}}` with the shell-escaped branch name.
+Use `target: "embedded"` to stream the command in CodePanes, or
+`target: "external"` / `"external-terminal"` for commands that launch another
+application or terminal.
+
 Creating a worktree accepts names in the `<type>/<name>` format. Selected
 worktrees are used as the base branch; when none are selected, `main` is used.

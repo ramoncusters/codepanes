@@ -4,6 +4,7 @@ import type { Theme } from "../services/themes.js";
 export class Prompt {
   readonly panel: BoxRenderable;
   readonly label: TextRenderable;
+  readonly inputSpacer: TextRenderable;
   readonly input: InputRenderable;
 
   constructor(renderer: CliRenderer) {
@@ -22,13 +23,19 @@ export class Prompt {
       zIndex: 35,
     });
     this.label = new TextRenderable(renderer, { content: "" });
+    this.inputSpacer = new TextRenderable(renderer, { content: " ", height: 1, visible: false });
     this.input = new InputRenderable(renderer, {
       width: "100%",
       backgroundColor: "#0b1020",
       focusedBackgroundColor: "#18264a",
     });
     this.panel.add(this.label);
+    this.panel.add(this.inputSpacer);
     this.panel.add(this.input);
+  }
+
+  setInputSpacing(enabled: boolean): void {
+    this.inputSpacer.visible = enabled;
   }
 
   applyTheme(theme: Theme): void {
@@ -38,5 +45,6 @@ export class Prompt {
     this.input.backgroundColor = theme.inputBackground;
     this.input.focusedBackgroundColor = theme.focusedBackground;
     this.input.textColor = theme.text;
+    this.inputSpacer.fg = theme.muted;
   }
 }

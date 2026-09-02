@@ -8,19 +8,37 @@ const execFileAsync = promisify(execFile);
 export async function getWorktrees(cwd: string): Promise<Worktree[]> {
   try {
     const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain"], { cwd });
+    const commonRoot = await bareRoot(cwd);
+    let remoteRefs = "";
+    try {
+      ({ stdout: remoteRefs } = await execFileAsync(
+        "git",
+        ["for-each-ref", "--format=%(refname:strip=2)", "refs/remotes"],
+        { cwd },
+      ));
+    } catch {
+      remoteRefs = "";
+    }
+    const remotes = remoteRefs.split(/\r?\n/).filter(Boolean);
+    const createWorktree = (worktreePath: string, branch: string): Worktree => ({
+      path: worktreePath,
+      branch,
+      name: path.relative(commonRoot, worktreePath) || path.basename(commonRoot),
+      remote: remotes.find((remote) => remote.slice(remote.indexOf("/") + 1) === branch),
+    });
     const worktrees: Worktree[] = [];
     let current: Partial<Worktree> = {};
 
     for (const line of stdout.split(/\r?\n/)) {
       if (line.startsWith("worktree ")) {
-        if (current.path) worktrees.push({ path: current.path, branch: current.branch ?? "(detached)" });
+        if (current.path) worktrees.push(createWorktree(current.path, current.branch ?? "(detached)"));
         current = { path: line.slice("worktree ".length) };
       } else if (line.startsWith("branch ") && current.path) {
         current.branch = line.slice("branch ".length).replace(/^refs\/heads\//, "");
       }
     }
-    if (current.path) worktrees.push({ path: current.path, branch: current.branch ?? "(detached)" });
-    return worktrees.length > 0 ? worktrees : [{ path: cwd, branch: path.basename(cwd) }];
+    if (current.path) worktrees.push(createWorktree(current.path, current.branch ?? "(detached)"));
+    return worktrees.length > 0 ? worktrees : [createWorktree(cwd, path.basename(cwd))];
   } catch {
     return [{ path: cwd, branch: path.basename(cwd) }];
   }

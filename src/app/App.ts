@@ -27,7 +27,7 @@ import { ConfigEditor } from "../components/ConfigEditor.js";
 import { createTabs } from "../components/Tabs.js";
 import { Footer } from "../components/Footer.js";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.js";
-import { runInteractiveCommand } from "../services/commands.js";
+import { expandWorktreeCommand, runExternalCommand, runInteractiveCommand } from "../services/commands.js";
 import { getTheme, loadThemes, type Theme } from "../services/themes.js";
 import type { Action, TabName, Worktree } from "../types.js";
 import type { IPty } from "node-pty";
@@ -226,6 +226,8 @@ export async function runApp(): Promise<void> {
   };
 
   const openPrompt = (mode: "create" | "delete" | "delete-branches", label: string): void => {
+    if (mode === "create") promptPanel.height = 7;
+    prompt.setInputSpacing(mode !== "create");
     state.promptMode = mode;
     state.promptActive = true;
     promptLabel.content = label;
@@ -234,6 +236,9 @@ export async function runApp(): Promise<void> {
     select.blur();
     promptInput.focus();
   };
+
+  const deletePromptLabel = (targets: Worktree[]): string =>
+    `Delete these worktrees? Type y to confirm:\n\n${worktreesPanel.formatTable(targets)}\n\n`;
 
   const openThemeSwitcher = (): void => {
     if (state.configEditorActive || state.keybindingsActive || state.promptActive) return;
@@ -387,7 +392,9 @@ export async function runApp(): Promise<void> {
   const deleteWorktrees = async (targets: Worktree[], deleteBranches: boolean): Promise<void> => {
     const root = await bareRoot(cwd);
     state.worktreeOperationActive = true;
-    for (const target of targets) worktreesPanel.setOperation(target.path, "deleting");
+    for (const target of targets) {
+      worktreesPanel.setOperation(target.path, "deleting", "delete", target.name ?? path.basename(target.path));
+    }
     try {
       for (let index = 0; index < targets.length; index += 1) {
         try {
@@ -398,6 +405,7 @@ export async function runApp(): Promise<void> {
           }
           worktreesPanel.clearOperation(targets[index].path);
           selectedWorktrees.delete(targets[index].path);
+          await refreshWorktrees();
         } catch (error) {
           worktreesPanel.setOperation(targets[index].path, "failed");
           for (const remaining of targets.slice(index + 1)) worktreesPanel.clearOperation(remaining.path);
@@ -420,7 +428,7 @@ export async function runApp(): Promise<void> {
       state.terminalFocused = false;
       terminal.blur();
       if (!state.keybindingsActive) select.focus();
-      footerText.content = "↑/↓ move   Space select   / filter   n new   d delete   C config   Enter open   Tab switch tabs   ? Keybindings   Q quit";
+      footerText.content = "↑/↓ move   Space select   / filter   n new   d delete   x clear operations   C config   Enter open   Tab switch tabs   ? Keybindings   Q quit";
     } else {
       state.terminalFocused = true;
       select.blur();
@@ -496,14 +504,14 @@ export async function runApp(): Promise<void> {
       state.pendingDeleteTargets = worktrees.filter((worktree) => selectedWorktrees.has(worktree.path));
       openPrompt(
         "delete-branches",
-        `Delete related branches too? Type y or n: ${state.pendingDeleteTargets.map((item) => item.branch).join(", ")}`,
+        `Delete related branches too? Type y or n:\n\n${worktreesPanel.formatTable(state.pendingDeleteTargets)}\n\n`,
       );
     } else if (mode === "delete-branches") {
       if (value.toLowerCase() !== "y" && value.toLowerCase() !== "n") {
         footerText.content = "Please type y or n to choose whether to delete related branches.";
         openPrompt(
           "delete-branches",
-          `Delete related branches too? Type y or n: ${state.pendingDeleteTargets.map((item) => item.branch).join(", ")}`,
+          `Delete related branches too? Type y or n:\n\n${worktreesPanel.formatTable(state.pendingDeleteTargets)}\n\n`,
         );
         return;
       }
@@ -518,7 +526,40 @@ export async function runApp(): Promise<void> {
 
   const selectedTarget = (): Worktree | undefined => worktreesPanel.selectedTarget();
 
-  const performAction = (action: Action): void => {
+  const runConfiguredCommand = (
+    binding?: { command?: string; target?: "embedded" | "external" | "external-terminal" },
+  ): void => {
+    if (state.activeTab !== 0 || !binding?.command) return;
+    const target = selectedTarget();
+    if (!target) {
+      footerText.content = "No worktree is selected.";
+      return;
+    }
+    const command = expandWorktreeCommand(binding.command, target.path, target.branch);
+    const run = binding.target === "embedded"
+      ? runInteractiveCommand(
+          commandShell,
+          command,
+          {
+            cwd: target.path,
+            cols: Math.max(20, worktreesPanel.output.terminal.width),
+            rows: Math.max(8, worktreesPanel.output.terminal.height),
+          },
+          (data) => worktreesPanel.output.write(data),
+        )
+      : runExternalCommand(commandShell, command, target.path);
+    void run.then(
+      () => {
+        worktreesPanel.output.writeMessage(`[completed] ${command}`, appliedTheme.success ?? appliedTheme.accent);
+      },
+      (error: unknown) => {
+        worktreesPanel.output.writeMessage(`[failed] ${command}: ${String(error)}`, appliedTheme.error ?? appliedTheme.accent);
+        footerText.content = `Unable to run command: ${String(error)}`;
+      },
+    );
+  };
+
+  const performAction = (action: Action, binding?: { command?: string; target?: "embedded" | "external" | "external-terminal" }): void => {
     if (state.promptActive || state.keybindingsActive) return;
     if (action === "edit-config") {
       void openConfigEditor().catch((error: unknown) => {
@@ -532,6 +573,14 @@ export async function runApp(): Promise<void> {
     }
     if (action === "switch-theme") {
       openThemeSwitcher();
+      return;
+    }
+    if (action === "run-command") {
+      runConfiguredCommand(binding);
+      return;
+    }
+    if (action === "clear-operations") {
+      worktreesPanel.clearOperations();
       return;
     }
     if (state.activeTab !== 0) return;
@@ -557,9 +606,10 @@ export async function runApp(): Promise<void> {
         footerText.content = "No worktrees selected for deletion.";
       } else {
         state.pendingDeleteTargets = targets;
+        promptPanel.height = Math.min(9 + targets.length, 70);
         openPrompt(
           "delete",
-          `Delete ${targets.length} worktree(s)? Type y to confirm: ${targets.map((item) => item.branch).join(", ")}`,
+          deletePromptLabel(targets),
         );
       }
     }
@@ -621,7 +671,7 @@ export async function runApp(): Promise<void> {
       : undefined;
     if (globalBinding && !key.ctrl && !key.meta) {
       key.preventDefault();
-      performAction(globalBinding.action);
+      performAction(globalBinding.action, globalBinding);
       return;
     }
     if (state.activeTab === 0 && key.name === "?" && !key.ctrl && !key.meta) {
@@ -640,7 +690,7 @@ export async function runApp(): Promise<void> {
       const binding = keybindings[key.name] ?? (key.name === "space" ? keybindings.spacebar : undefined);
       if (binding) {
         key.preventDefault();
-        performAction(binding.action);
+        performAction(binding.action, binding);
         return;
       }
     }

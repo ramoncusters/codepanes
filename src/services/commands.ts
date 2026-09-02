@@ -1,7 +1,31 @@
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { spawnPty } from "./pty.js";
 
 export type CommandOutput = (data: string) => void;
+
+export function expandWorktreeCommand(command: string, worktreeDir: string, worktreeName: string): string {
+  const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+  return command
+    .replaceAll("{{worktreeDir}}", quote(worktreeDir))
+    .replaceAll("{{worktreeName}}", quote(worktreeName));
+}
+
+export function runExternalCommand(shell: string, command: string, cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(shell, ["-ic", command], {
+      cwd,
+      env: { ...process.env, SHELL: shell, TERM: "xterm-256color" },
+      stdio: "ignore",
+      detached: true,
+    });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
 
 export function runInteractiveCommand(
   shell: string,
