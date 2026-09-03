@@ -12,6 +12,11 @@ const defaultGlobalKeybindings: Record<string, Keybinding> = {
   C: { name: "Edit configuration", action: "edit-config" },
   t: { name: "Switch theme", action: "switch-theme" },
 };
+const defaultActionsKeybindings: Record<string, Keybinding> = {
+  enter: { name: "Run action", action: "run-action" },
+  x: { name: "Stop selected action", action: "stop-action" },
+  X: { name: "Stop all actions", action: "stop-actions" },
+};
 
 export function ensureDefaultKeybindings(config: Config): void {
   config.globalKeybindings = {
@@ -23,6 +28,10 @@ export function ensureDefaultKeybindings(config: Config): void {
     Worktrees: {
       ...defaultKeybindings,
       ...config.globalKeybindings?.Worktrees,
+    },
+    Actions: {
+      ...defaultActionsKeybindings,
+      ...config.globalKeybindings?.Actions,
     },
   };
 }
@@ -36,6 +45,7 @@ export function createKeybindingResolver(
     ...defaultGlobalKeybindings,
     ...config.globalKeybindings?.Global,
     ...(tabName === "Worktrees" ? defaultKeybindings : {}),
+    ...(tabName === "Actions" ? defaultActionsKeybindings : {}),
     ...config.globalKeybindings?.[tabName],
     ...projectConfig.keybindings?.[tabName],
   });

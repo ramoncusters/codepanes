@@ -2,7 +2,13 @@ import type { Worktree } from "../types.js";
 
 import type { Theme } from "../services/themes.js";
 
-export type PromptMode = "create" | "delete" | "delete-branches" | "apply-theme" | null;
+export type PromptMode =
+  | "create"
+  | "delete"
+  | "delete-branches"
+  | "apply-theme"
+  | "switch-actions"
+  | null;
 
 export type AppState = {
   activeTab: number;
@@ -16,6 +22,7 @@ export type AppState = {
   pendingDeleteTargets: Worktree[];
   pendingTheme: Theme | null;
   worktreeOperationActive: boolean;
+  pendingWorktreeSelection: { index: number; path: string } | null;
 };
 
 export function createAppState(): AppState {
@@ -31,5 +38,6 @@ export function createAppState(): AppState {
     pendingDeleteTargets: [],
     pendingTheme: null,
     worktreeOperationActive: false,
+    pendingWorktreeSelection: null,
   };
 }

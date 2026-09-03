@@ -27,6 +27,7 @@ import { ConfigEditor } from "../components/ConfigEditor.js";
 import { createTabs } from "../components/Tabs.js";
 import { Footer } from "../components/Footer.js";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.js";
+import { ActionsPanel } from "../components/ActionsPanel.js";
 import { expandWorktreeCommand, runExternalCommand, runInteractiveCommand } from "../services/commands.js";
 import { getTheme, loadThemes, type Theme } from "../services/themes.js";
 import type { Action, TabName, Worktree } from "../types.js";
@@ -116,12 +117,22 @@ export async function runApp(): Promise<void> {
   root.add(configEditorPanel);
 
   const worktreesPanel = new WorktreesPanel(renderer, worktrees, terminalBackground);
+  const actionsPanel = new ActionsPanel(
+    renderer,
+    projectConfig.actions ?? [],
+    commandShell,
+    terminalBackground,
+  );
   const worktreePanel = worktreesPanel.panel;
   const select = worktreesPanel.select;
   const searchBar = worktreesPanel.searchBar;
   const searchInput = worktreesPanel.searchInput;
   const selectedWorktrees = worktreesPanel.selectedWorktrees;
   const state = createAppState();
+  let lastSelectedWorktreePath = worktreesPanel.selectedTarget()?.path;
+  let lastSelectedWorktreeIndex = worktreesPanel.select.getSelectedIndex();
+  let revertingWorktreeSelection = false;
+  actionsPanel.setWorktree(worktreesPanel.selectedTarget());
   const prompt = new Prompt(renderer);
   const promptPanel = prompt.panel;
   const promptLabel = prompt.label;
@@ -140,14 +151,21 @@ export async function runApp(): Promise<void> {
   const refreshWorktrees = async (): Promise<void> => {
     await worktreesPanel.refresh();
     worktrees = worktreesPanel.items;
+    const target = worktreesPanel.selectedTarget();
+    lastSelectedWorktreePath = target?.path;
+    lastSelectedWorktreeIndex = worktreesPanel.select.getSelectedIndex();
+    actionsPanel.setWorktree(target);
   };
 
   const closePrompt = (): void => {
     state.promptActive = false;
     state.promptMode = null;
+    state.pendingWorktreeSelection = null;
     promptPanel.visible = false;
     promptInput.blur();
-    select.focus();
+    if (state.activeTab === 0) select.focus();
+    else if (state.activeTab === 2) actionsPanel.select.focus();
+    else terminal.focus();
   };
 
   const closeThemeSwitcher = (restore = true): void => {
@@ -159,6 +177,7 @@ export async function runApp(): Promise<void> {
     themeSwitcher.panel.visible = false;
     themeSwitcher.select.blur();
     if (state.activeTab === 0) select.focus();
+    else if (state.activeTab === 2) actionsPanel.select.focus();
     else terminal.focus();
   };
 
@@ -166,6 +185,7 @@ export async function runApp(): Promise<void> {
     root.backgroundColor = theme.background;
     worktreesPanel.applyTheme(theme);
     lazygitTerminal.applyTheme(theme);
+    actionsPanel.applyTheme(theme);
     configEditor.applyTheme(theme);
     footer.applyTheme(theme);
     prompt.applyTheme(theme);
@@ -179,6 +199,7 @@ export async function runApp(): Promise<void> {
     state.keybindingsActive = false;
     keybindingsPanel.visible = false;
     if (state.activeTab === 0) select.focus();
+    else if (state.activeTab === 2) actionsPanel.select.focus();
     else terminal.focus();
   };
 
@@ -189,6 +210,7 @@ export async function runApp(): Promise<void> {
     configInstructionsPanel.visible = false;
     configEditorPanel.visible = false;
     if (state.activeTab === 0) select.focus();
+    else if (state.activeTab === 2) actionsPanel.select.focus();
     else terminal.focus();
   };
 
@@ -202,6 +224,7 @@ export async function runApp(): Promise<void> {
     configEditorPanel.visible = true;
     select.blur();
     terminal.blur();
+    actionsPanel.select.blur();
     configEditorRenderable.focus();
     await configEditor.open();
   };
@@ -217,6 +240,7 @@ export async function runApp(): Promise<void> {
     keybindingsPanel.visible = true;
     select.blur();
     terminal.blur();
+    actionsPanel.select.blur();
   };
 
   const toggleConfigInstructions = (): void => {
@@ -225,7 +249,10 @@ export async function runApp(): Promise<void> {
     configEditor.toggleInstructions(state.configInstructionsActive);
   };
 
-  const openPrompt = (mode: "create" | "delete" | "delete-branches", label: string): void => {
+  const openPrompt = (
+    mode: "create" | "delete" | "delete-branches" | "switch-actions",
+    label: string,
+  ): void => {
     if (mode === "create") promptPanel.height = 7;
     prompt.setInputSpacing(mode !== "create");
     state.promptMode = mode;
@@ -234,6 +261,7 @@ export async function runApp(): Promise<void> {
     promptInput.value = "";
     promptPanel.visible = true;
     select.blur();
+    actionsPanel.select.blur();
     promptInput.focus();
   };
 
@@ -249,6 +277,7 @@ export async function runApp(): Promise<void> {
     themeSwitcher.select.focus();
     select.blur();
     terminal.blur();
+    actionsPanel.select.blur();
   };
 
   function beginThemeConfirmation(theme: Theme): void {
@@ -289,8 +318,10 @@ export async function runApp(): Promise<void> {
   applyEmbeddedTerminalPalette(configEditorRenderable, terminalPalette);
   lazygitTerminal.applyPalette(terminalPalette);
   worktreesPanel.applyPalette(terminalPalette);
+  actionsPanel.applyPalette(terminalPalette);
   body.add(worktreePanel);
   body.add(terminalPanel);
+  body.add(actionsPanel.panel);
   // root.add(header);
   root.add(tabs);
   root.add(body);
@@ -303,6 +334,7 @@ export async function runApp(): Promise<void> {
     applyEmbeddedTerminalPalette(configEditorRenderable, palette);
     lazygitTerminal.applyPalette(palette);
     worktreesPanel.applyPalette(palette);
+    actionsPanel.applyPalette(palette);
   };
   renderer.on("palette", syncTerminalBackground);
 
@@ -423,23 +455,60 @@ export async function runApp(): Promise<void> {
     state.activeTab = index;
     worktreePanel.visible = index === 0;
     terminalPanel.visible = index === 1;
+    actionsPanel.panel.visible = index === 2;
 
     if (index === 0) {
       state.terminalFocused = false;
       terminal.blur();
       if (!state.keybindingsActive) select.focus();
       footerText.content = "↑/↓ move   Space select   / filter   n new   d delete   x clear operations   C config   Enter open   Tab switch tabs   ? Keybindings   Q quit";
-    } else {
+    } else if (index === 1) {
       state.terminalFocused = true;
       select.blur();
       if (!state.keybindingsActive && !state.configEditorActive) {
         void focusTerminal();
       }
       footerText.content = "Lazygit focused   C config   Tab switch tabs   Q quit";
+    } else {
+      state.terminalFocused = false;
+      select.blur();
+      terminal.blur();
+      if (!state.keybindingsActive && !state.configEditorActive) actionsPanel.select.focus();
+      footerText.content = "↑/↓ choose action   Enter run   x stop   X stop all   C config   Tab switch tabs   ? Keybindings   Q quit";
     }
   };
 
   const openWorktree = (worktree: Worktree): Promise<void> => lazygitTerminal.open(worktree);
+
+  select.on(SelectRenderableEvents.SELECTION_CHANGED, () => {
+    if (revertingWorktreeSelection) {
+      revertingWorktreeSelection = false;
+      return;
+    }
+    const target = worktreesPanel.selectedTarget();
+    const nextIndex = select.getSelectedIndex();
+    if (
+      state.activeTab === 0
+      && target
+      && lastSelectedWorktreePath
+      && target.path !== lastSelectedWorktreePath
+      && actionsPanel.hasActiveProcesses()
+    ) {
+      state.pendingWorktreeSelection = { index: nextIndex, path: target.path };
+      revertingWorktreeSelection = true;
+      select.setSelectedIndex(lastSelectedWorktreeIndex);
+      openPrompt(
+        "switch-actions",
+        `Actions are running for another worktree. Stop them before switching? Type y or n:\n\n`
+          + `y = stop ${actionsPanel.activeCount} action${actionsPanel.activeCount === 1 ? "" : "s"}\n`
+          + "n = keep them running\n\n",
+      );
+      return;
+    }
+    lastSelectedWorktreePath = target?.path;
+    lastSelectedWorktreeIndex = nextIndex;
+    actionsPanel.setWorktree(target);
+  });
 
   select.on(SelectRenderableEvents.ITEM_SELECTED, async (_index, option) => {
     if (state.worktreeOperationActive) return;
@@ -492,6 +561,26 @@ export async function runApp(): Promise<void> {
       } else {
         closeThemeSwitcher();
       }
+      return;
+    }
+    if (mode === "switch-actions") {
+      const answer = value.toLowerCase();
+      if (answer !== "y" && answer !== "n") {
+        footerText.content = "Please type y to stop actions or n to keep them running.";
+        return;
+      }
+      if (answer === "y") actionsPanel.stopAll();
+      const pending = state.pendingWorktreeSelection;
+      state.pendingWorktreeSelection = null;
+      if (pending) {
+        revertingWorktreeSelection = true;
+        select.setSelectedIndex(pending.index);
+        const target = worktreesPanel.selectedTarget();
+        lastSelectedWorktreePath = target?.path;
+        lastSelectedWorktreeIndex = select.getSelectedIndex();
+        actionsPanel.setWorktree(target);
+      }
+      closePrompt();
       return;
     }
     closePrompt();
@@ -579,6 +668,21 @@ export async function runApp(): Promise<void> {
       runConfiguredCommand(binding);
       return;
     }
+    if (action === "run-action") {
+      if (state.activeTab !== 2) return;
+      actionsPanel.runSelected(selectedTarget());
+      return;
+    }
+    if (action === "stop-action") {
+      if (state.activeTab !== 2) return;
+      actionsPanel.stopSelected();
+      return;
+    }
+    if (action === "stop-actions") {
+      if (state.activeTab !== 2) return;
+      actionsPanel.stopAll();
+      return;
+    }
     if (action === "clear-operations") {
       worktreesPanel.clearOperations();
       return;
@@ -654,7 +758,7 @@ export async function runApp(): Promise<void> {
     }
     if (!state.configEditorActive && key.name === "tab") {
       key.preventDefault();
-      const nextTab = state.activeTab === 0 ? 1 : 0;
+      const nextTab = (state.activeTab + 1) % 3;
       tabs.setSelectedIndex(nextTab);
       updateTab(nextTab);
       return;
@@ -680,6 +784,12 @@ export async function runApp(): Promise<void> {
       else showKeybindings("Worktrees");
       return;
     }
+    if (state.activeTab === 2 && key.name === "?" && !key.ctrl && !key.meta) {
+      key.preventDefault();
+      if (state.keybindingsActive) closeKeybindings();
+      else showKeybindings("Actions");
+      return;
+    }
     if (state.keybindingsActive && key.name === "escape") {
       key.preventDefault();
       closeKeybindings();
@@ -688,6 +798,16 @@ export async function runApp(): Promise<void> {
     if (state.activeTab === 0 && !state.promptActive && !state.searchActive && !key.ctrl && !key.meta) {
       const keybindings = getKeybindings("Worktrees");
       const binding = keybindings[key.name] ?? (key.name === "space" ? keybindings.spacebar : undefined);
+      if (binding) {
+        key.preventDefault();
+        performAction(binding.action, binding);
+        return;
+      }
+    }
+    if (state.activeTab === 2 && !state.promptActive && !key.ctrl && !key.meta) {
+      const keybindings = getKeybindings("Actions");
+      const binding = keybindings[key.shift ? key.name.toUpperCase() : key.name]
+        ?? (key.name === "return" ? keybindings.enter : undefined);
       if (binding) {
         key.preventDefault();
         performAction(binding.action, binding);
@@ -717,6 +837,7 @@ export async function runApp(): Promise<void> {
     stopPty();
     configEditor.close();
     worktreesPanel.dispose();
+    actionsPanel.dispose();
   });
 
   const shutdown = (signal: NodeJS.Signals): void => {

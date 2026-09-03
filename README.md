@@ -31,9 +31,12 @@ installed Node 26 runtime when available and does not change the user's
 default Node environment. If no suitable runtime is installed, it exits with
 an installation error.
 
-Controls: use `Up`/`Down` and `Enter` to open a worktree, `Tab` to switch
-between the Worktrees and Lazygit tabs, `t` to open the theme switcher, and
-`Q` to quit.
+Controls: use `Up`/`Down` and `Enter` to open a worktree, `Tab` to cycle
+between the Worktrees, Lazygit, and Actions tabs, and `Q` to quit. The Actions
+tab runs project-configured commands in the currently selected worktree. Press
+`Enter` to start an action, `x` to stop the selected action, and `X` to stop
+all actions. Actions marked `persistent` are intended for long-running or watch
+commands.
 
 User configuration is stored in `~/.config/codepanes/config.json`. Keybindings
 are nested by tab name, can be global or scoped to a project, and each
@@ -88,9 +91,14 @@ Repository-specific commands can run after creating a worktree:
       "shell": "zsh",
       "keybindings": {
         "Worktrees": {},
-        "Lazygit": {}
+        "Lazygit": {},
+        "Actions": {}
       },
-      "postCreateActions": ["npm install"]
+      "postCreateActions": ["npm install"],
+      "actions": [
+        { "name": "Dev server", "command": "npm run dev", "persistent": true },
+        { "name": "Tests", "command": "npm test" }
+      ]
     }
   }
 }
@@ -119,6 +127,11 @@ and `{{worktreeName}}` with the shell-escaped branch name.
 Use `target: "embedded"` to stream the command in CodePanes, or
 `target: "external"` / `"external-terminal"` for commands that launch another
 application or terminal.
+
+Actions always run in a PTY with the configured project shell and use the
+selected worktree as their working directory. If an action is still running
+when you change worktrees, CodePanes asks whether to stop it or leave it
+running. An action cannot be started again while its existing process is active.
 
 Creating a worktree accepts names in the `<type>/<name>` format. Selected
 worktrees are used as the base branch; when none are selected, `main` is used.

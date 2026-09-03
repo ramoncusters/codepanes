@@ -5,11 +5,12 @@ export function createTabs(renderer: CliRenderer): TabSelectRenderable {
     position: "absolute",
     left: 2,
     height: 1,
-    width: 38,
+    width: 56,
     tabWidth: 18,
     options: [
       { name: "worktrees", description: "Choose a Git worktree" },
       { name: "lazygit", description: "Review the active worktree" },
+      { name: "actions", description: "Run project actions" },
     ],
     showDescription: false,
     showUnderline: true,
