@@ -163,7 +163,7 @@ export async function runApp(): Promise<void> {
     state.pendingWorktreeSelection = null;
     promptPanel.visible = false;
     promptInput.blur();
-    if (state.activeTab === 0) select.focus();
+    if (state.activeTab === 0) worktreesPanel.focusOverview();
     else if (state.activeTab === 2) actionsPanel.select.focus();
     else terminal.focus();
   };
@@ -176,7 +176,7 @@ export async function runApp(): Promise<void> {
     state.pendingTheme = null;
     themeSwitcher.panel.visible = false;
     themeSwitcher.select.blur();
-    if (state.activeTab === 0) select.focus();
+    if (state.activeTab === 0) worktreesPanel.focusOverview();
     else if (state.activeTab === 2) actionsPanel.select.focus();
     else terminal.focus();
   };
@@ -198,7 +198,7 @@ export async function runApp(): Promise<void> {
   const closeKeybindings = (): void => {
     state.keybindingsActive = false;
     keybindingsPanel.visible = false;
-    if (state.activeTab === 0) select.focus();
+    if (state.activeTab === 0) worktreesPanel.focusOverview();
     else if (state.activeTab === 2) actionsPanel.select.focus();
     else terminal.focus();
   };
@@ -209,7 +209,7 @@ export async function runApp(): Promise<void> {
     state.configInstructionsActive = false;
     configInstructionsPanel.visible = false;
     configEditorPanel.visible = false;
-    if (state.activeTab === 0) select.focus();
+    if (state.activeTab === 0) worktreesPanel.focusOverview();
     else if (state.activeTab === 2) actionsPanel.select.focus();
     else terminal.focus();
   };
@@ -460,7 +460,7 @@ export async function runApp(): Promise<void> {
     if (index === 0) {
       state.terminalFocused = false;
       terminal.blur();
-      if (!state.keybindingsActive) select.focus();
+      if (!state.keybindingsActive) worktreesPanel.focusOverview();
       footerText.content = "↑/↓ move   Space select   / filter   n new   d delete   x clear operations   C config   Enter open   Tab switch tabs   ? Keybindings   Q quit";
     } else if (index === 1) {
       state.terminalFocused = true;
@@ -473,7 +473,7 @@ export async function runApp(): Promise<void> {
       state.terminalFocused = false;
       select.blur();
       terminal.blur();
-      if (!state.keybindingsActive && !state.configEditorActive) actionsPanel.select.focus();
+      if (!state.keybindingsActive && !state.configEditorActive) actionsPanel.focusActions();
       footerText.content = "↑/↓ choose action   Enter run   x stop   X stop all   C config   Tab switch tabs   ? Keybindings   Q quit";
     }
   };
@@ -765,6 +765,40 @@ export async function runApp(): Promise<void> {
     }
     if (state.activeTab === 1) {
       return;
+    }
+    if (state.activeTab === 2 && !state.promptActive && !state.keybindingsActive && !state.configEditorActive) {
+      if (key.name === "h") {
+        key.preventDefault();
+        actionsPanel.focusActions();
+        return;
+      }
+      if (key.name === "l") {
+        key.preventDefault();
+        actionsPanel.focusOutput();
+        return;
+      }
+      if (actionsPanel.isOutputFocused() && (key.name === "j" || key.name === "k")) {
+        key.preventDefault();
+        actionsPanel.scrollOutput(key.name === "j" ? 3 : -3);
+        return;
+      }
+    }
+    if (state.activeTab === 0 && !state.promptActive && !state.keybindingsActive && !state.configEditorActive && !state.searchActive) {
+      if (key.name === "h") {
+        key.preventDefault();
+        worktreesPanel.focusOverview();
+        return;
+      }
+      if (key.name === "l") {
+        key.preventDefault();
+        worktreesPanel.focusOutput();
+        return;
+      }
+      if (worktreesPanel.isOutputFocused() && (key.name === "j" || key.name === "k")) {
+        key.preventDefault();
+        worktreesPanel.scrollOutput(key.name === "j" ? 3 : -3);
+        return;
+      }
     }
     if (!state.configEditorActive && key.name === "q" && !key.ctrl && !key.meta) {
       renderer.destroy();

@@ -49,6 +49,7 @@ export class WorktreesPanel {
   private readonly operationRecords = new Map<string, OperationRecord>();
   private spinnerTimer: ReturnType<typeof setInterval> | null = null;
   private spinnerFrame = 0;
+  private outputFocused = false;
   private readonly handleResize = (width: number): void => {
     const stacked = width < 100;
     this.panel.flexDirection = stacked ? "column" : "row";
@@ -294,6 +295,26 @@ export class WorktreesPanel {
 
   applyPalette(palette: TerminalColors): void {
     this.output.applyPalette(palette);
+  }
+
+  focusOverview(): void {
+    this.outputFocused = false;
+    this.output.blur();
+    this.select.focus();
+  }
+
+  focusOutput(): void {
+    this.outputFocused = true;
+    this.select.blur();
+    this.output.focus();
+  }
+
+  isOutputFocused(): boolean {
+    return this.outputFocused;
+  }
+
+  scrollOutput(lines: number): void {
+    this.output.scrollBy(lines);
   }
 
   private updateOptions(): void {

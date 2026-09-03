@@ -27,6 +27,7 @@ export class ActionsPanel {
   private currentWorktree: Worktree | undefined;
   private readonly processes = new Map<number, ActionProcess>();
   private readonly outputs = new Map<number, CommandOutputPanel>();
+  private outputFocused = false;
   private theme: Theme;
 
   constructor(
@@ -115,6 +116,26 @@ export class ActionsPanel {
     this.updateOptions();
   }
 
+  focusActions(): void {
+    this.outputFocused = false;
+    this.selectedOutput().blur();
+    this.select.focus();
+  }
+
+  focusOutput(): void {
+    this.outputFocused = true;
+    this.select.blur();
+    this.selectedOutput().focus();
+  }
+
+  isOutputFocused(): boolean {
+    return this.outputFocused;
+  }
+
+  scrollOutput(lines: number): void {
+    this.selectedOutput().scrollBy(lines);
+  }
+
   applyPalette(palette: TerminalColors): void {
     this.output.applyPalette(palette);
     for (const output of this.outputs.values()) output.applyPalette(palette);
@@ -145,12 +166,13 @@ export class ActionsPanel {
     }
 
     const command = expandWorktreeCommand(action.command, worktree.path, worktree.branch);
+    const output = this.outputFor(actionIndex);
     let actionPty: IPty;
     try {
       actionPty = spawnPty(this.shell, ["-i"], {
         cwd: worktree.path,
-        cols: Math.max(20, this.output.terminal.width),
-        rows: Math.max(8, this.output.terminal.height),
+        cols: Math.max(20, output.terminal.width),
+        rows: Math.max(8, output.terminal.height),
         name: "xterm-256color",
         env: { SHELL: this.shell, TERM: "xterm-256color" },
       });
@@ -161,7 +183,7 @@ export class ActionsPanel {
     const process: ActionProcess = { actionIndex, action, worktree, pty: actionPty };
     this.processes.set(actionIndex, process);
     this.updateOptions();
-    this.outputFor(actionIndex).writeMessage(
+    output.writeMessage(
       `[started] ${action.name} (${worktree.branch})${action.persistent ? " [persistent]" : ""}`,
       this.theme.success ?? this.theme.accent,
     );
@@ -224,7 +246,9 @@ export class ActionsPanel {
     this.output.panel.visible = this.actions.length === 0;
     for (const [index, output] of this.outputs) {
       output.panel.visible = index === selectedIndex;
+      if (index !== selectedIndex) output.blur();
     }
+    if (this.outputFocused) this.selectedOutput().focus();
   }
 }
 

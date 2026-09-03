@@ -1,6 +1,7 @@
 import {
   BoxRenderable,
   EmbeddedTerminalRenderable,
+  MouseEvent,
   type CliRenderer,
   type TerminalColors,
 } from "@opentui/core";
@@ -64,6 +65,27 @@ export class CommandOutputPanel {
     this.panel.backgroundColor = theme.background;
     this.panel.borderColor = theme.border;
     this.panel.titleColor = theme.accent;
+  }
+
+  focus(): void {
+    this.terminal.focus();
+  }
+
+  blur(): void {
+    this.terminal.blur();
+  }
+
+  scrollBy(lines: number): void {
+    const direction = lines < 0 ? "up" : "down";
+    const event = new MouseEvent(this.terminal, {
+      type: "scroll",
+      button: direction === "up" ? 4 : 5,
+      x: this.terminal.x,
+      y: this.terminal.y,
+      modifiers: { shift: false, alt: false, ctrl: false },
+      scroll: { direction, delta: Math.abs(lines) },
+    });
+    this.terminal.onMouseScroll?.(event);
   }
 
   private filterIconSequence(data: string): { output: string; pending: string } {
