@@ -1,6 +1,7 @@
 import {
   BoxRenderable,
   SelectRenderable,
+  SelectRenderableEvents,
   type CliRenderer,
   type TerminalColors,
 } from "@opentui/core";
@@ -25,6 +26,7 @@ export class ActionsPanel {
   private actions: ProjectAction[];
   private currentWorktree: Worktree | undefined;
   private readonly processes = new Map<number, ActionProcess>();
+  private readonly outputs = new Map<number, CommandOutputPanel>();
   private theme: Theme;
 
   constructor(
@@ -83,9 +85,20 @@ export class ActionsPanel {
       selectedTextColor: "#ffffff",
     });
     this.output = new CommandOutputPanel(renderer, backgroundColor);
+    this.output.panel.visible = this.actions.length === 0;
     listPanel.add(this.select);
     this.panel.add(listPanel);
     this.panel.add(this.output.panel);
+    for (const [index, action] of this.actions.entries()) {
+      const output = new CommandOutputPanel(renderer, backgroundColor);
+      output.panel.title = action.name;
+      output.panel.visible = index === 0;
+      this.outputs.set(index, output);
+      this.panel.add(output.panel);
+    }
+    this.select.on(SelectRenderableEvents.SELECTION_CHANGED, () => {
+      this.showSelectedOutput();
+    });
     this.updateOptions();
   }
 
@@ -104,6 +117,7 @@ export class ActionsPanel {
 
   applyPalette(palette: TerminalColors): void {
     this.output.applyPalette(palette);
+    for (const output of this.outputs.values()) output.applyPalette(palette);
   }
 
   applyTheme(theme: Theme): void {
@@ -111,6 +125,7 @@ export class ActionsPanel {
     this.panel.backgroundColor = theme.background;
     this.panel.borderColor = theme.border;
     this.output.applyTheme(theme);
+    for (const output of this.outputs.values()) output.applyTheme(theme);
     this.updateOptions();
   }
 
@@ -118,14 +133,14 @@ export class ActionsPanel {
     const actionIndex = this.select.getSelectedIndex();
     const action = this.actions[actionIndex];
     if (!action || !worktree) {
-      this.output.writeMessage(
+      this.selectedOutput().writeMessage(
         worktree ? "No configured action is available." : "No worktree is selected.",
         this.theme.error ?? this.theme.accent,
       );
       return;
     }
     if (this.processes.has(actionIndex)) {
-      this.output.writeMessage(`${action.name} is already running.`, this.theme.accent);
+      this.selectedOutput().writeMessage(`${action.name} is already running.`, this.theme.accent);
       return;
     }
 
@@ -140,24 +155,24 @@ export class ActionsPanel {
         env: { SHELL: this.shell, TERM: "xterm-256color" },
       });
     } catch (error) {
-      this.output.writeMessage(`[failed] ${action.name}: ${String(error)}`, this.theme.error ?? this.theme.accent);
+      this.selectedOutput().writeMessage(`[failed] ${action.name}: ${String(error)}`, this.theme.error ?? this.theme.accent);
       return;
     }
     const process: ActionProcess = { actionIndex, action, worktree, pty: actionPty };
     this.processes.set(actionIndex, process);
     this.updateOptions();
-    this.output.writeMessage(
+    this.outputFor(actionIndex).writeMessage(
       `[started] ${action.name} (${worktree.branch})${action.persistent ? " [persistent]" : ""}`,
       this.theme.success ?? this.theme.accent,
     );
-    actionPty.onData((data) => this.output.write(data));
+    actionPty.onData((data) => this.outputFor(actionIndex).write(data));
     actionPty.onExit(({ exitCode, signal }) => {
       if (this.processes.get(actionIndex)?.pty !== actionPty) return;
       this.processes.delete(actionIndex);
       this.updateOptions();
       const result = signal ? `terminated by ${signal}` : `exited with code ${exitCode}`;
       const succeeded = !signal && exitCode === 0;
-      this.output.writeMessage(`[${succeeded ? "completed" : "failed"}] ${action.name}: ${result}`, succeeded
+      this.outputFor(actionIndex).writeMessage(`[${succeeded ? "completed" : "failed"}] ${action.name}: ${result}`, succeeded
         ? this.theme.success ?? this.theme.accent
         : this.theme.error ?? this.theme.accent);
     });
@@ -194,6 +209,22 @@ export class ActionsPanel {
         value: action,
       };
     });
+  }
+
+  private outputFor(actionIndex: number): CommandOutputPanel {
+    return this.outputs.get(actionIndex) ?? this.output;
+  }
+
+  private selectedOutput(): CommandOutputPanel {
+    return this.outputFor(this.select.getSelectedIndex());
+  }
+
+  private showSelectedOutput(): void {
+    const selectedIndex = this.select.getSelectedIndex();
+    this.output.panel.visible = this.actions.length === 0;
+    for (const [index, output] of this.outputs) {
+      output.panel.visible = index === selectedIndex;
+    }
   }
 }
 
