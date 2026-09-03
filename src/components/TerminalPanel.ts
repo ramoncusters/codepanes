@@ -60,7 +60,7 @@ export class TerminalPanel {
     }
   }
 
-  async open(worktree: Worktree): Promise<void> {
+  async open(worktree: Worktree, focus = true): Promise<void> {
     this.stop();
     this.terminal.write("\x1b[2J\x1b[3J\x1b[H");
     await this.renderer.idle();
@@ -82,12 +82,14 @@ export class TerminalPanel {
         this.onFocusChange(false);
         this.terminal.write(`\n[lazygit exited with code ${exitCode}]`);
       });
-      this.terminalFocused = true;
-      this.onFocusChange(true);
-      await this.renderer.idle();
-      this.terminal.focus();
-      await new Promise((resolve) => setTimeout(resolve, 25));
-      this.terminal.focus();
+      if (focus) {
+        this.terminalFocused = true;
+        this.onFocusChange(true);
+        await this.renderer.idle();
+        this.terminal.focus();
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        this.terminal.focus();
+      }
     } catch (error) {
       this.terminalFocused = false;
       this.onFocusChange(false);

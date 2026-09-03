@@ -50,6 +50,7 @@ export class WorktreesPanel {
   private spinnerTimer: ReturnType<typeof setInterval> | null = null;
   private spinnerFrame = 0;
   private outputFocused = false;
+  private activeWorktreePath: string | undefined;
   private readonly handleResize = (width: number): void => {
     const stacked = width < 100;
     this.panel.flexDirection = stacked ? "column" : "row";
@@ -80,6 +81,7 @@ export class WorktreesPanel {
       muted: "#aab7d8",
     };
     this.worktrees = initialWorktrees;
+    this.activeWorktreePath = this.items[0]?.path;
     this.panel = new BoxRenderable(renderer, {
       paddingTop: 1,
       flexGrow: 1,
@@ -190,6 +192,15 @@ export class WorktreesPanel {
 
   get items(): Worktree[] {
     return this.worktrees.filter((worktree) => worktree.branch !== "(detached)");
+  }
+
+  get activeWorktree(): Worktree | undefined {
+    return this.items.find((worktree) => worktree.path === this.activeWorktreePath);
+  }
+
+  setActiveWorktree(worktree: Worktree | undefined): void {
+    this.activeWorktreePath = worktree?.path;
+    this.updateOptions();
   }
 
   async refresh(): Promise<void> {
@@ -340,6 +351,7 @@ export class WorktreesPanel {
         const row = new WorktreeRow(this.renderer, worktree, {
           cursorSelected: index === this.select.getSelectedIndex(),
           selected: this.selectedWorktrees.has(worktree.path),
+          active: worktree.path === this.activeWorktreePath,
         }, this.theme);
         this.rows.push(row);
         this.rowsPanel.add(row.panel);

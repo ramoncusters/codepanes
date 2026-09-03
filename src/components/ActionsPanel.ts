@@ -21,6 +21,7 @@ type ActionProcess = {
 
 export class ActionsPanel {
   readonly panel: BoxRenderable;
+  private readonly listPanel: BoxRenderable;
   readonly select: SelectRenderable;
   readonly output: CommandOutputPanel;
   private actions: ProjectAction[];
@@ -58,7 +59,7 @@ export class ActionsPanel {
       borderColor: "#2b3c68",
       backgroundColor,
     });
-    const listPanel = new BoxRenderable(renderer, {
+    this.listPanel = new BoxRenderable(renderer, {
       flexGrow: 1,
       flexBasis: 0,
       flexDirection: "column",
@@ -87,8 +88,8 @@ export class ActionsPanel {
     });
     this.output = new CommandOutputPanel(renderer, backgroundColor);
     this.output.panel.visible = this.actions.length === 0;
-    listPanel.add(this.select);
-    this.panel.add(listPanel);
+    this.listPanel.add(this.select);
+    this.panel.add(this.listPanel);
     this.panel.add(this.output.panel);
     for (const [index, action] of this.actions.entries()) {
       const output = new CommandOutputPanel(renderer, backgroundColor);
@@ -113,6 +114,7 @@ export class ActionsPanel {
 
   setWorktree(worktree: Worktree | undefined): void {
     this.currentWorktree = worktree;
+    this.listPanel.title = "actions";
     this.updateOptions();
   }
 

@@ -24,7 +24,7 @@ import { WorktreesPanel } from "../components/WorktreesPanel.js";
 import { Prompt } from "../components/Prompt.js";
 import { KeybindingsHelp } from "../components/KeybindingsHelp.js";
 import { ConfigEditor } from "../components/ConfigEditor.js";
-import { createTabs } from "../components/Tabs.js";
+import { createTabs, createWorktreeChip } from "../components/Tabs.js";
 import { Footer } from "../components/Footer.js";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.js";
 import { ActionsPanel } from "../components/ActionsPanel.js";
@@ -93,6 +93,7 @@ export async function runApp(): Promise<void> {
   // }));
 
   const tabs = createTabs(renderer);
+  const worktreeChip = createWorktreeChip(renderer, terminalBackground);
 
   const body = new BoxRenderable(renderer, {
     flexGrow: 1,
@@ -129,10 +130,18 @@ export async function runApp(): Promise<void> {
   const searchInput = worktreesPanel.searchInput;
   const selectedWorktrees = worktreesPanel.selectedWorktrees;
   const state = createAppState();
-  let lastSelectedWorktreePath = worktreesPanel.selectedTarget()?.path;
-  let lastSelectedWorktreeIndex = worktreesPanel.select.getSelectedIndex();
   let revertingWorktreeSelection = false;
+  const updateWorktreeChip = (worktree: Worktree | undefined): void => {
+    const name = worktree?.name ?? worktree?.branch ?? "-";
+    const label = name.slice(0, 19);
+    const chipWidth = label.length + 2;
+    worktreeChip.panel.width = chipWidth;
+    worktreeChip.text.width = chipWidth;
+    worktreeChip.text.content = ` ${label} `;
+    tabs.left = chipWidth + 5;
+  };
   actionsPanel.setWorktree(worktreesPanel.selectedTarget());
+  updateWorktreeChip(worktreesPanel.activeWorktree);
   const prompt = new Prompt(renderer);
   const promptPanel = prompt.panel;
   const promptLabel = prompt.label;
@@ -152,9 +161,8 @@ export async function runApp(): Promise<void> {
     await worktreesPanel.refresh();
     worktrees = worktreesPanel.items;
     const target = worktreesPanel.selectedTarget();
-    lastSelectedWorktreePath = target?.path;
-    lastSelectedWorktreeIndex = worktreesPanel.select.getSelectedIndex();
-    actionsPanel.setWorktree(target);
+    actionsPanel.setWorktree(worktreesPanel.activeWorktree ?? target);
+    updateWorktreeChip(worktreesPanel.activeWorktree ?? target);
   };
 
   const closePrompt = (): void => {
@@ -193,6 +201,8 @@ export async function runApp(): Promise<void> {
     themeSwitcher.applyTheme(theme);
     tabs.selectedTextColor = theme.text;
     tabs.focusedTextColor = theme.text;
+    worktreeChip.panel.bg = theme.focusedBackground;
+    worktreeChip.text.fg = theme.text;
   }
 
   const closeKeybindings = (): void => {
@@ -324,6 +334,7 @@ export async function runApp(): Promise<void> {
   body.add(actionsPanel.panel);
   // root.add(header);
   root.add(tabs);
+  root.add(worktreeChip.panel);
   root.add(body);
   root.add(footerPanel);
   renderer.root.add(root);
@@ -478,51 +489,33 @@ export async function runApp(): Promise<void> {
     }
   };
 
-  const openWorktree = (worktree: Worktree): Promise<void> => lazygitTerminal.open(worktree);
+  const openWorktree = (worktree: Worktree, focus = true): Promise<void> => lazygitTerminal.open(worktree, focus);
 
   select.on(SelectRenderableEvents.SELECTION_CHANGED, () => {
     if (revertingWorktreeSelection) {
       revertingWorktreeSelection = false;
       return;
     }
-    const target = worktreesPanel.selectedTarget();
-    const nextIndex = select.getSelectedIndex();
-    if (
-      state.activeTab === 0
-      && target
-      && lastSelectedWorktreePath
-      && target.path !== lastSelectedWorktreePath
-      && actionsPanel.hasActiveProcesses()
-    ) {
-      state.pendingWorktreeSelection = { index: nextIndex, path: target.path };
-      revertingWorktreeSelection = true;
-      select.setSelectedIndex(lastSelectedWorktreeIndex);
+  });
+
+  select.on(SelectRenderableEvents.ITEM_SELECTED, async (_index, option) => {
+    if (state.worktreeOperationActive) return;
+    const target = option.value as Worktree;
+    const active = worktreesPanel.activeWorktree;
+    if (active?.path !== target.path && actionsPanel.hasActiveProcesses()) {
+      state.pendingWorktreeSelection = { index: select.getSelectedIndex(), path: target.path };
       openPrompt(
         "switch-actions",
-        `Actions are running for another worktree. Stop them before switching? Type y or n:\n\n`
+        `Actions are running for ${active?.branch ?? "another worktree"}. Stop them before switching? Type y or n:\n\n`
           + `y = stop ${actionsPanel.activeCount} action${actionsPanel.activeCount === 1 ? "" : "s"}\n`
           + "n = keep them running\n\n",
       );
       return;
     }
-    lastSelectedWorktreePath = target?.path;
-    lastSelectedWorktreeIndex = nextIndex;
+    worktreesPanel.setActiveWorktree(target);
+    updateWorktreeChip(target);
     actionsPanel.setWorktree(target);
-  });
-
-  select.on(SelectRenderableEvents.ITEM_SELECTED, async (_index, option) => {
-    if (state.worktreeOperationActive) return;
-    select.blur();
-    tabs.setSelectedIndex(1);
-    state.activeTab = 1;
-    worktreePanel.visible = false;
-    terminalPanel.visible = true;
-    await renderer.idle();
-    terminal.blur();
-    terminal.focus();
-    await renderer.idle();
-    terminal.focus();
-    void openWorktree(option.value as Worktree).catch((error: unknown) => {
+    void openWorktree(target, false).catch((error: unknown) => {
       footerText.content = `Unable to start lazygit: ${String(error)}`;
     });
   });
@@ -576,9 +569,14 @@ export async function runApp(): Promise<void> {
         revertingWorktreeSelection = true;
         select.setSelectedIndex(pending.index);
         const target = worktreesPanel.selectedTarget();
-        lastSelectedWorktreePath = target?.path;
-        lastSelectedWorktreeIndex = select.getSelectedIndex();
+        worktreesPanel.setActiveWorktree(target);
+        updateWorktreeChip(target);
         actionsPanel.setWorktree(target);
+        if (target) {
+          void openWorktree(target, false).catch((error: unknown) => {
+            footerText.content = `Unable to start lazygit: ${String(error)}`;
+          });
+        }
       }
       closePrompt();
       return;

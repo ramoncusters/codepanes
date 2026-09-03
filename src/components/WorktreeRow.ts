@@ -6,6 +6,7 @@ import type { Worktree } from "../types.js";
 export type WorktreeRowState = {
   cursorSelected: boolean;
   selected: boolean;
+  active: boolean;
 };
 
 export class WorktreeRow {
@@ -44,7 +45,7 @@ export class WorktreeRow {
 
   update(worktree: Worktree, state: WorktreeRowState): void {
     this.cursor.content = state.cursorSelected ? "› " : "  ";
-    this.indicator.content = `${state.selected ? "✓" : " "} `;
+    this.indicator.content = `${state.selected ? "✓" : state.active ? "●" : " "} `;
     this.name.content = (worktree.name ?? path.basename(worktree.path)).padEnd(18, " ").slice(0, 18);
     this.branch.content = worktree.branch.padEnd(18, " ").slice(0, 18);
     this.remote.content = worktree.remote ? `● ${worktree.remote}` : "○ local only";
