@@ -46,6 +46,10 @@ export class CommandOutputPanel {
     if (this.pendingIconSequence.length > 0) return;
   }
 
+  clear(): void {
+    this.terminal.write("\x1b[2J\x1b[3J\x1b[H");
+  }
+
   writeMessage(data: string, color: string): void {
     const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
     if (!match) {

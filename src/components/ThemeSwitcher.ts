@@ -6,6 +6,7 @@ import {
   type CliRenderer,
 } from "@opentui/core";
 import type { Theme } from "../services/themes.js";
+import { keyHints } from "./keyHints.js";
 
 export class ThemeSwitcher {
   readonly panel: BoxRenderable;
@@ -49,7 +50,18 @@ export class ThemeSwitcher {
       focusedBackgroundColor: "#18264a",
     });
     this.hint = new TextRenderable(renderer, {
-      content: "↑/↓ preview   Enter apply   Esc close",
+      content: keyHints({
+        id: "initial",
+        name: "Initial",
+        background: "#111a33",
+        panelBackground: "#111a33",
+        inputBackground: "#111a33",
+        focusedBackground: "#18264a",
+        border: "#2b3c68",
+        accent: "#7dd3fc",
+        text: "#ffffff",
+        muted: "#aab7d8",
+      }, [["j/k", "preview"], ["Enter", "apply"], ["Esc", "close"]]),
       fg: "#aab7d8",
     });
     this.panel.add(this.select);
@@ -72,5 +84,6 @@ export class ThemeSwitcher {
     this.select.focusedBackgroundColor = theme.focusedBackground;
     this.select.selectedTextColor = theme.text;
     this.hint.fg = theme.muted;
+    this.hint.content = keyHints(theme, [["j/k", "preview"], ["Enter", "apply"], ["Esc", "close"]]);
   }
 }

@@ -11,6 +11,7 @@ import { spawnPty } from "../services/pty.js";
 import type { ProjectAction, Worktree } from "../types.js";
 import type { Theme } from "../services/themes.js";
 import { CommandOutputPanel } from "./CommandOutputPanel.js";
+import { ActionRow, type ActionRowStatus } from "./ActionRow.js";
 
 type ActionProcess = {
   actionIndex: number;
@@ -28,7 +29,25 @@ export class ActionsPanel {
   private currentWorktree: Worktree | undefined;
   private readonly processes = new Map<number, ActionProcess>();
   private readonly outputs = new Map<number, CommandOutputPanel>();
+  private readonly rows: ActionRow[] = [];
+  private readonly rowsPanel: BoxRenderable;
+  private readonly statuses = new Map<number, ActionRowStatus>();
+  private readonly stopping = new Set<number>();
   private outputFocused = false;
+  private pulse = false;
+  private pulseTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly handleResize = (width: number): void => {
+    const stacked = width < 100;
+    this.panel.flexDirection = stacked ? "column" : "row";
+    this.listPanel.flexShrink = stacked ? 0 : 1;
+    this.listPanel.minHeight = stacked ? Math.max(6, this.actions.length * 3 + 2) : null;
+    this.output.panel.flexShrink = 1;
+    this.output.panel.minHeight = stacked ? 3 : null;
+    for (const output of this.outputs.values()) {
+      output.panel.flexShrink = 1;
+      output.panel.minHeight = stacked ? 3 : null;
+    }
+  };
   private theme: Theme;
 
   constructor(
@@ -86,6 +105,13 @@ export class ActionsPanel {
       selectedDescriptionColor: "#ffffff",
       selectedTextColor: "#ffffff",
     });
+    this.rowsPanel = new BoxRenderable(renderer, {
+      flexGrow: 1,
+      flexDirection: "column",
+      gap: 1,
+    });
+    this.listPanel.add(this.rowsPanel);
+    this.select.visible = false;
     this.output = new CommandOutputPanel(renderer, backgroundColor);
     this.output.panel.visible = this.actions.length === 0;
     this.listPanel.add(this.select);
@@ -100,7 +126,10 @@ export class ActionsPanel {
     }
     this.select.on(SelectRenderableEvents.SELECTION_CHANGED, () => {
       this.showSelectedOutput();
+      this.renderRows();
     });
+    renderer.on("resize", this.handleResize);
+    this.handleResize(renderer.width);
     this.updateOptions();
   }
 
@@ -169,6 +198,7 @@ export class ActionsPanel {
 
     const command = expandWorktreeCommand(action.command, worktree.path, worktree.branch);
     const output = this.outputFor(actionIndex);
+    output.clear();
     let actionPty: IPty;
     try {
       actionPty = spawnPty(this.shell, ["-i"], {
@@ -179,10 +209,13 @@ export class ActionsPanel {
         env: { SHELL: this.shell, TERM: "xterm-256color" },
       });
     } catch (error) {
+      this.statuses.set(actionIndex, "failed");
       this.selectedOutput().writeMessage(`[failed] ${action.name}: ${String(error)}`, this.theme.error ?? this.theme.accent);
+      this.renderRows();
       return;
     }
     const process: ActionProcess = { actionIndex, action, worktree, pty: actionPty };
+    this.statuses.set(actionIndex, "running");
     this.processes.set(actionIndex, process);
     this.updateOptions();
     output.writeMessage(
@@ -193,10 +226,15 @@ export class ActionsPanel {
     actionPty.onExit(({ exitCode, signal }) => {
       if (this.processes.get(actionIndex)?.pty !== actionPty) return;
       this.processes.delete(actionIndex);
-      this.updateOptions();
+      const wasStopped = this.stopping.delete(actionIndex);
       const result = signal ? `terminated by ${signal}` : `exited with code ${exitCode}`;
       const succeeded = !signal && exitCode === 0;
-      this.outputFor(actionIndex).writeMessage(`[${succeeded ? "completed" : "failed"}] ${action.name}: ${result}`, succeeded
+      this.statuses.set(actionIndex, wasStopped ? "idle" : succeeded ? "success" : "failed");
+      this.updateOptions();
+      const label = wasStopped ? "stopped" : succeeded ? "completed" : "failed";
+      this.outputFor(actionIndex).writeMessage(`[${label}] ${action.name}: ${wasStopped ? "stopped by user" : result}`, wasStopped
+        ? this.theme.muted
+        : succeeded
         ? this.theme.success ?? this.theme.accent
         : this.theme.error ?? this.theme.accent);
     });
@@ -211,15 +249,21 @@ export class ActionsPanel {
       this.output.writeMessage("The selected action is not running.", this.theme.muted);
       return;
     }
+    this.stopping.add(actionIndex);
     process.pty.kill();
   }
 
   stopAll(): void {
-    for (const process of this.processes.values()) process.pty.kill();
+    for (const [actionIndex, process] of this.processes) {
+      this.stopping.add(actionIndex);
+      process.pty.kill();
+    }
   }
 
   dispose(): void {
     this.stopAll();
+    this.renderer.off("resize", this.handleResize);
+    if (this.pulseTimer) clearInterval(this.pulseTimer);
     this.processes.clear();
   }
 
@@ -233,6 +277,37 @@ export class ActionsPanel {
         value: action,
       };
     });
+    this.renderRows();
+    if (this.processes.size > 0 && !this.pulseTimer) {
+      this.pulseTimer = setInterval(() => {
+        this.pulse = !this.pulse;
+        this.renderRows();
+      }, 500);
+    } else if (this.processes.size === 0 && this.pulseTimer) {
+      clearInterval(this.pulseTimer);
+      this.pulseTimer = null;
+    }
+  }
+
+  private renderRows(): void {
+    for (const row of this.rows) {
+      this.rowsPanel.remove(row.panel);
+      row.panel.destroy();
+    }
+    this.rows.length = 0;
+    for (const [index, action] of this.actions.entries()) {
+      const row = new ActionRow(
+        this.renderer,
+        action.name,
+        action.command,
+        this.statuses.get(index) ?? "idle",
+        index === this.select.getSelectedIndex(),
+        this.pulse,
+        this.theme,
+      );
+      this.rows.push(row);
+      this.rowsPanel.add(row.panel);
+    }
   }
 
   private outputFor(actionIndex: number): CommandOutputPanel {

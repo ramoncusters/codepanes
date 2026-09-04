@@ -14,6 +14,7 @@ import type { Theme } from "../services/themes.js";
 import type { Worktree } from "../types.js";
 import { CommandOutputPanel } from "./CommandOutputPanel.js";
 import { WorktreeRow } from "./WorktreeRow.js";
+import { keyHints } from "./keyHints.js";
 
 type OperationStatus = "creating" | "deleting" | "failed";
 type OperationKind = "create" | "delete";
@@ -164,7 +165,7 @@ export class WorktreesPanel {
       flexGrow: 1,
     });
     this.operationHint = new TextRenderable(renderer, {
-      content: "press x to clear operations",
+      content: keyHints(this.theme, [["x", "clear operations"]]),
       fg: "#aab7d8",
     });
     this.operationSpacer = new TextRenderable(renderer, { content: " ", height: 1 });
@@ -298,6 +299,7 @@ export class WorktreesPanel {
     this.operationsPanel.borderColor = theme.border;
     this.operationsPanel.titleColor = theme.accent;
     this.operationHint.fg = theme.muted;
+    this.operationHint.content = keyHints(theme, [["x", "clear operations"]]);
     this.searchInput.backgroundColor = theme.inputBackground;
     this.searchInput.focusedBackgroundColor = theme.focusedBackground;
     this.output.applyTheme(theme);

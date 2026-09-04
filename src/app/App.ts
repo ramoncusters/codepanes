@@ -27,6 +27,7 @@ import { ConfigEditor } from "../components/ConfigEditor.js";
 import { createTabs, createWorktreeChip } from "../components/Tabs.js";
 import { Footer } from "../components/Footer.js";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.js";
+import { keyHints } from "../components/keyHints.js";
 import { ActionsPanel } from "../components/ActionsPanel.js";
 import { expandWorktreeCommand, runExternalCommand, runInteractiveCommand } from "../services/commands.js";
 import { getTheme, loadThemes, type Theme } from "../services/themes.js";
@@ -472,20 +473,46 @@ export async function runApp(): Promise<void> {
       state.terminalFocused = false;
       terminal.blur();
       if (!state.keybindingsActive) worktreesPanel.focusOverview();
-      footerText.content = "↑/↓ move   Space select   / filter   n new   d delete   x clear operations   C config   Enter open   Tab switch tabs   ? Keybindings   Q quit";
+      footerText.content = keyHints(appliedTheme, [
+        ["j/k", "move"],
+        ["Space", "select"],
+        ["/", "filter"],
+        ["n", "new"],
+        ["d", "delete"],
+        ["x", "clear operations"],
+        ["C", "config"],
+        ["Enter", "open"],
+        ["Tab", "switch tabs"],
+        ["?", "keybindings"],
+        ["Q", "quit"],
+      ]);
     } else if (index === 1) {
       state.terminalFocused = true;
       select.blur();
       if (!state.keybindingsActive && !state.configEditorActive) {
         void focusTerminal();
       }
-      footerText.content = "Lazygit focused   C config   Tab switch tabs   Q quit";
+      footerText.content = keyHints(appliedTheme, [
+        ["j/k", "navigate"],
+        ["C", "config"],
+        ["Tab", "switch tabs"],
+        ["Q", "quit"],
+      ]);
     } else {
       state.terminalFocused = false;
       select.blur();
       terminal.blur();
       if (!state.keybindingsActive && !state.configEditorActive) actionsPanel.focusActions();
-      footerText.content = "↑/↓ choose action   Enter run   x stop   X stop all   C config   Tab switch tabs   ? Keybindings   Q quit";
+      footerText.content = keyHints(appliedTheme, [
+        ["j/k", "choose action"],
+        ["Enter", "run"],
+        ["x", "stop"],
+        ["X", "stop all"],
+        ["C", "config"],
+        ["Tab", "switch tabs"],
+        ["?", "keybindings"],
+        ["Q", "quit"],
+      ]);
     }
   };
 
@@ -756,7 +783,7 @@ export async function runApp(): Promise<void> {
     }
     if (!state.configEditorActive && key.name === "tab") {
       key.preventDefault();
-      const nextTab = (state.activeTab + 1) % 3;
+      const nextTab = key.shift ? (state.activeTab + 2) % 3 : (state.activeTab + 1) % 3;
       tabs.setSelectedIndex(nextTab);
       updateTab(nextTab);
       return;
