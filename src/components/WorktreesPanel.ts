@@ -138,6 +138,7 @@ export class WorktreesPanel {
     });
     this.listHeader = new TextRenderable(renderer, {
       content: `${"".padEnd(4)}${"WORKTREE".padEnd(18)}│ ${"BRANCH".padEnd(18)}│ REMOTE`,
+      width: "100%",
       fg: "#aab7d8",
       flexShrink: 0,
     });

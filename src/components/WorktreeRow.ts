@@ -34,7 +34,7 @@ export class WorktreeRow {
     const nameSeparator = new TextRenderable(renderer, { content: "│ ", width: 2 });
     this.branch = new TextRenderable(renderer, { width: 18 });
     const branchSeparator = new TextRenderable(renderer, { content: "│ ", width: 2 });
-    this.remote = new TextRenderable(renderer, { width: 18, flexShrink: 1 });
+    this.remote = new TextRenderable(renderer, { width: 18, flexGrow: 1, flexShrink: 1 });
     this.panel.add(this.cursor);
     this.panel.add(this.indicator);
     this.panel.add(this.name);
