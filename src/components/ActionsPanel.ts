@@ -76,7 +76,7 @@ export class ActionsPanel {
       border: true,
       borderStyle: "rounded",
       borderColor: "#2b3c68",
-      backgroundColor,
+      backgroundColor: "transparent",
     });
     this.listPanel = new BoxRenderable(renderer, {
       flexGrow: 1,
@@ -174,7 +174,8 @@ export class ActionsPanel {
 
   applyTheme(theme: Theme): void {
     this.theme = theme;
-    this.panel.backgroundColor = theme.background;
+    this.panel.backgroundColor = "transparent";
+    this.listPanel.backgroundColor = theme.background;
     this.panel.borderColor = theme.border;
     this.output.applyTheme(theme);
     for (const output of this.outputs.values()) output.applyTheme(theme);

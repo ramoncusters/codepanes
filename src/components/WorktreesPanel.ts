@@ -32,10 +32,6 @@ export class WorktreesPanel {
   readonly searchBar: BoxRenderable;
   readonly searchInput: InputRenderable;
   readonly searchLabel: TextRenderable;
-  readonly listHeader: BoxRenderable;
-  private readonly worktreeHeader: TextRenderable;
-  private readonly branchHeader: TextRenderable;
-  private readonly remoteHeader: TextRenderable;
   readonly operationsPanel: BoxRenderable;
   readonly selectedWorktrees = new Set<string>();
   private worktrees: Worktree[];
@@ -61,7 +57,7 @@ export class WorktreesPanel {
     this.listPanel.flexShrink = stacked ? 0 : 1;
     this.listPanel.minHeight = stacked ? this.minimumOverviewHeight() : null;
     this.rowsPanel.flexShrink = stacked ? 0 : 1;
-    this.rowsPanel.minHeight = stacked ? this.rows.length + 1 : null;
+    this.rowsPanel.minHeight = stacked ? this.rows.length * 4 + 1 : null;
     this.output.panel.flexShrink = stacked ? 1 : 1;
     this.output.panel.minHeight = stacked ? 3 : null;
   };
@@ -93,7 +89,7 @@ export class WorktreesPanel {
       border: true,
       borderStyle: "rounded",
       borderColor: "#2b3c68",
-      backgroundColor,
+      backgroundColor: "transparent",
     });
     this.listPanel = new BoxRenderable(renderer, {
       flexGrow: 1,
@@ -139,44 +135,11 @@ export class WorktreesPanel {
       selectedDescriptionColor: "#ffffff",
       selectedTextColor: "#ffffff",
     });
-    this.listHeader = new BoxRenderable(renderer, {
-      width: "100%",
-      height: 1,
-      flexDirection: "row",
-      flexShrink: 0,
-    });
-    this.listHeader.add(new TextRenderable(renderer, { width: 4 }));
-    this.worktreeHeader = new TextRenderable(renderer, {
-      content: "WORKTREE",
-      flexGrow: 2,
-      flexBasis: 18,
-      flexShrink: 1,
-      fg: "#aab7d8",
-    });
-    this.branchHeader = new TextRenderable(renderer, {
-      content: "BRANCH",
-      flexGrow: 2,
-      flexBasis: 18,
-      flexShrink: 1,
-      fg: "#aab7d8",
-    });
-    this.remoteHeader = new TextRenderable(renderer, {
-      content: "REMOTE",
-      flexGrow: 1,
-      flexBasis: 18,
-      flexShrink: 1,
-      fg: "#aab7d8",
-    });
-    this.listHeader.add(this.worktreeHeader);
-    this.listHeader.add(new TextRenderable(renderer, { content: "│ ", width: 2 }));
-    this.listHeader.add(this.branchHeader);
-    this.listHeader.add(new TextRenderable(renderer, { content: "│ ", width: 2 }));
-    this.listHeader.add(this.remoteHeader);
-    this.listPanel.add(this.listHeader);
     this.rowsPanel = new BoxRenderable(renderer, {
       flexGrow: 1,
       flexDirection: "column",
       paddingTop: 1,
+      gap: 1,
     });
     this.listPanel.add(this.rowsPanel);
     this.operationsPanel = new BoxRenderable(renderer, {
@@ -301,7 +264,8 @@ export class WorktreesPanel {
   }
 
   setBackgroundColor(backgroundColor: string): void {
-    this.panel.backgroundColor = backgroundColor;
+    this.panel.backgroundColor = "transparent";
+    this.listPanel.backgroundColor = backgroundColor;
     this.output.setBackgroundColor(backgroundColor);
     this.searchBar.backgroundColor = backgroundColor;
     this.select.backgroundColor = backgroundColor;
@@ -310,9 +274,9 @@ export class WorktreesPanel {
 
   applyTheme(theme: Theme): void {
     this.theme = theme;
-    this.panel.backgroundColor = theme.background;
+    this.panel.backgroundColor = "transparent";
     this.panel.borderColor = theme.border;
-    this.listPanel.backgroundColor = theme.panelBackground;
+    this.listPanel.backgroundColor = theme.background;
     this.listPanel.borderColor = theme.border;
     this.listPanel.titleColor = theme.accent;
     this.searchBar.backgroundColor = theme.panelBackground;
@@ -325,9 +289,6 @@ export class WorktreesPanel {
     this.select.selectedDescriptionColor = theme.text;
     this.select.selectedTextColor = theme.text;
     this.searchLabel.fg = theme.muted;
-    this.worktreeHeader.fg = theme.muted;
-    this.branchHeader.fg = theme.muted;
-    this.remoteHeader.fg = theme.muted;
     this.operationsPanel.backgroundColor = theme.panelBackground;
     this.operationsPanel.borderColor = theme.border;
     this.operationsPanel.titleColor = theme.accent;
@@ -433,7 +394,7 @@ export class WorktreesPanel {
 
   private minimumOverviewHeight(): number {
     const operationsHeight = this.operationRecords.size > 0 ? this.operationRecords.size + 6 : 0;
-    return Math.max(8, this.rows.length + operationsHeight + 7);
+    return Math.max(8, this.rows.length * 4 + operationsHeight + 7);
   }
 
   private startSpinner(): void {

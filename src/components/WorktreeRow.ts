@@ -27,25 +27,22 @@ export class WorktreeRow {
   ) {
     this.theme = theme;
     this.worktree = worktree;
-    this.panel = new BoxRenderable(renderer, { height: 1, width: "100%", flexDirection: "row" });
+    this.panel = new BoxRenderable(renderer, { height: 3, width: "100%", flexDirection: "row" });
     this.cursor = new TextRenderable(renderer, { width: 2 });
     this.indicator = new TextRenderable(renderer, { width: 2 });
-    this.name = new TextRenderable(renderer, { flexGrow: 2, flexBasis: 18, flexShrink: 1 });
-    const nameSeparator = new TextRenderable(renderer, { content: "│ ", width: 2 });
-    this.branch = new TextRenderable(renderer, { flexGrow: 2, flexBasis: 18, flexShrink: 1 });
-    const branchSeparator = new TextRenderable(renderer, { content: "│ ", width: 2 });
-    this.remote = new TextRenderable(renderer, { width: 18, flexGrow: 1, flexShrink: 1 });
+    this.name = new TextRenderable(renderer, { content: "", flexGrow: 1 });
+    this.branch = new TextRenderable(renderer, { content: "", fg: theme.muted });
+    this.remote = new TextRenderable(renderer, { content: "", fg: theme.muted });
+    const details = new BoxRenderable(renderer, {
+      flexGrow: 1,
+      flexDirection: "column",
+    });
+    details.add(this.name);
+    details.add(this.branch);
+    details.add(this.remote);
     this.panel.add(this.cursor);
     this.panel.add(this.indicator);
-    this.panel.add(this.name);
-    this.panel.add(nameSeparator);
-    this.panel.add(this.branch);
-    this.panel.add(branchSeparator);
-    this.panel.add(this.remote);
-    this.panel.onSizeChange = () => {
-      this.renderColumns();
-      this.renderRemote();
-    };
+    this.panel.add(details);
     this.update(worktree, state);
   }
 
@@ -53,13 +50,14 @@ export class WorktreeRow {
     this.worktree = worktree;
     this.cursor.content = state.cursorSelected ? "› " : "  ";
     this.indicator.content = `${state.selected ? "✓" : state.active ? "●" : " "} `;
-    this.renderColumns();
-    this.renderRemote();
-    this.panel.backgroundColor = state.cursorSelected ? this.theme.focusedBackground : this.theme.panelBackground;
+    this.name.content = worktree.name ?? path.basename(worktree.path);
+    this.branch.content = `branch: ${worktree.branch}`;
+    this.remote.content = worktree.remote ? `remote: ${worktree.remote}` : "remote:";
+    this.panel.backgroundColor = state.cursorSelected ? this.theme.focusedBackground : "transparent";
     this.cursor.fg = this.theme.accent;
     this.indicator.fg = this.theme.success ?? this.theme.accent;
     this.name.fg = this.theme.text;
-    this.branch.fg = this.theme.accent;
+    this.branch.fg = this.theme.muted;
     this.remote.fg = worktree.remote ? this.theme.success ?? this.theme.accent : this.theme.muted;
   }
 
@@ -67,25 +65,4 @@ export class WorktreeRow {
     this.theme = theme;
   }
 
-  private renderRemote(): void {
-    if (!this.worktree.remote) {
-      this.remote.content = "○";
-      return;
-    }
-    this.remote.content = this.panel.width >= 72 ? `● ${this.worktree.remote}` : "●";
-  }
-
-  private renderColumns(): void {
-    const name = this.worktree.name ?? path.basename(this.worktree.path);
-    const rowWidth = this.panel.width > 0 ? this.panel.width : 62;
-    const remoteWidth = rowWidth >= 72 ? 18 : 2;
-    const columnWidth = Math.max(3, Math.floor((rowWidth - 8 - remoteWidth) / 2));
-    this.name.content = this.truncateColumn(name, columnWidth);
-    this.branch.content = this.truncateColumn(this.worktree.branch, columnWidth);
-  }
-
-  private truncateColumn(value: string, width: number): string {
-    if (value.length <= width) return value.padEnd(width, " ");
-    return `${value.slice(0, width - 3)}...`;
-  }
 }
