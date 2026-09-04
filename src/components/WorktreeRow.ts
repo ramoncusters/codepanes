@@ -77,10 +77,11 @@ export class WorktreeRow {
 
   private renderColumns(): void {
     const name = this.worktree.name ?? path.basename(this.worktree.path);
-    const nameWidth = this.name.width > 0 ? this.name.width : 18;
-    const branchWidth = this.branch.width > 0 ? this.branch.width : 18;
-    this.name.content = this.truncateColumn(name, Math.max(3, nameWidth));
-    this.branch.content = this.truncateColumn(this.worktree.branch, Math.max(3, branchWidth));
+    const rowWidth = this.panel.width > 0 ? this.panel.width : 62;
+    const remoteWidth = rowWidth >= 72 ? 18 : 2;
+    const columnWidth = Math.max(3, Math.floor((rowWidth - 8 - remoteWidth) / 2));
+    this.name.content = this.truncateColumn(name, columnWidth);
+    this.branch.content = this.truncateColumn(this.worktree.branch, columnWidth);
   }
 
   private truncateColumn(value: string, width: number): string {
