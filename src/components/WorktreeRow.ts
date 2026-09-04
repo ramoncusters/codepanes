@@ -30,9 +30,9 @@ export class WorktreeRow {
     this.panel = new BoxRenderable(renderer, { height: 1, width: "100%", flexDirection: "row" });
     this.cursor = new TextRenderable(renderer, { width: 2 });
     this.indicator = new TextRenderable(renderer, { width: 2 });
-    this.name = new TextRenderable(renderer, { width: 18 });
+    this.name = new TextRenderable(renderer, { flexGrow: 2, flexBasis: 18, flexShrink: 1 });
     const nameSeparator = new TextRenderable(renderer, { content: "│ ", width: 2 });
-    this.branch = new TextRenderable(renderer, { width: 18 });
+    this.branch = new TextRenderable(renderer, { flexGrow: 2, flexBasis: 18, flexShrink: 1 });
     const branchSeparator = new TextRenderable(renderer, { content: "│ ", width: 2 });
     this.remote = new TextRenderable(renderer, { width: 18, flexGrow: 1, flexShrink: 1 });
     this.panel.add(this.cursor);
@@ -42,7 +42,10 @@ export class WorktreeRow {
     this.panel.add(this.branch);
     this.panel.add(branchSeparator);
     this.panel.add(this.remote);
-    this.panel.onSizeChange = () => this.renderRemote();
+    this.panel.onSizeChange = () => {
+      this.renderColumns();
+      this.renderRemote();
+    };
     this.update(worktree, state);
   }
 
@@ -50,8 +53,7 @@ export class WorktreeRow {
     this.worktree = worktree;
     this.cursor.content = state.cursorSelected ? "› " : "  ";
     this.indicator.content = `${state.selected ? "✓" : state.active ? "●" : " "} `;
-    this.name.content = (worktree.name ?? path.basename(worktree.path)).padEnd(18, " ").slice(0, 18);
-    this.branch.content = this.truncateBranch(worktree.branch, 18);
+    this.renderColumns();
     this.renderRemote();
     this.panel.backgroundColor = state.cursorSelected ? this.theme.focusedBackground : this.theme.panelBackground;
     this.cursor.fg = this.theme.accent;
@@ -73,8 +75,16 @@ export class WorktreeRow {
     this.remote.content = this.panel.width >= 72 ? `● ${this.worktree.remote}` : "●";
   }
 
-  private truncateBranch(branch: string, width: number): string {
-    if (branch.length <= width) return branch.padEnd(width, " ");
-    return `${branch.slice(0, width - 3)}...`;
+  private renderColumns(): void {
+    const name = this.worktree.name ?? path.basename(this.worktree.path);
+    const nameWidth = this.name.width > 0 ? this.name.width : 18;
+    const branchWidth = this.branch.width > 0 ? this.branch.width : 18;
+    this.name.content = this.truncateColumn(name, Math.max(3, nameWidth));
+    this.branch.content = this.truncateColumn(this.worktree.branch, Math.max(3, branchWidth));
+  }
+
+  private truncateColumn(value: string, width: number): string {
+    if (value.length <= width) return value.padEnd(width, " ");
+    return `${value.slice(0, width - 3)}...`;
   }
 }

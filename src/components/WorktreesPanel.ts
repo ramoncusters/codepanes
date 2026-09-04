@@ -32,7 +32,10 @@ export class WorktreesPanel {
   readonly searchBar: BoxRenderable;
   readonly searchInput: InputRenderable;
   readonly searchLabel: TextRenderable;
-  readonly listHeader: TextRenderable;
+  readonly listHeader: BoxRenderable;
+  private readonly worktreeHeader: TextRenderable;
+  private readonly branchHeader: TextRenderable;
+  private readonly remoteHeader: TextRenderable;
   readonly operationsPanel: BoxRenderable;
   readonly selectedWorktrees = new Set<string>();
   private worktrees: Worktree[];
@@ -136,12 +139,39 @@ export class WorktreesPanel {
       selectedDescriptionColor: "#ffffff",
       selectedTextColor: "#ffffff",
     });
-    this.listHeader = new TextRenderable(renderer, {
-      content: `${"".padEnd(4)}${"WORKTREE".padEnd(18)}│ ${"BRANCH".padEnd(18)}│ REMOTE`,
+    this.listHeader = new BoxRenderable(renderer, {
       width: "100%",
-      fg: "#aab7d8",
+      height: 1,
+      flexDirection: "row",
       flexShrink: 0,
     });
+    this.listHeader.add(new TextRenderable(renderer, { width: 4 }));
+    this.worktreeHeader = new TextRenderable(renderer, {
+      content: "WORKTREE",
+      flexGrow: 2,
+      flexBasis: 18,
+      flexShrink: 1,
+      fg: "#aab7d8",
+    });
+    this.branchHeader = new TextRenderable(renderer, {
+      content: "BRANCH",
+      flexGrow: 2,
+      flexBasis: 18,
+      flexShrink: 1,
+      fg: "#aab7d8",
+    });
+    this.remoteHeader = new TextRenderable(renderer, {
+      content: "REMOTE",
+      flexGrow: 1,
+      flexBasis: 18,
+      flexShrink: 1,
+      fg: "#aab7d8",
+    });
+    this.listHeader.add(this.worktreeHeader);
+    this.listHeader.add(new TextRenderable(renderer, { content: "│ ", width: 2 }));
+    this.listHeader.add(this.branchHeader);
+    this.listHeader.add(new TextRenderable(renderer, { content: "│ ", width: 2 }));
+    this.listHeader.add(this.remoteHeader);
     this.listPanel.add(this.listHeader);
     this.rowsPanel = new BoxRenderable(renderer, {
       flexGrow: 1,
@@ -295,7 +325,9 @@ export class WorktreesPanel {
     this.select.selectedDescriptionColor = theme.text;
     this.select.selectedTextColor = theme.text;
     this.searchLabel.fg = theme.muted;
-    this.listHeader.fg = theme.muted;
+    this.worktreeHeader.fg = theme.muted;
+    this.branchHeader.fg = theme.muted;
+    this.remoteHeader.fg = theme.muted;
     this.operationsPanel.backgroundColor = theme.panelBackground;
     this.operationsPanel.borderColor = theme.border;
     this.operationsPanel.titleColor = theme.accent;
