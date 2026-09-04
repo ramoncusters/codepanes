@@ -141,8 +141,13 @@ export async function runApp(): Promise<void> {
     worktreeChip.text.content = ` ${label} `;
     tabs.left = chipWidth + 5;
   };
+  const updateTerminalTitle = (worktree: Worktree | undefined): void => {
+    const name = (worktree?.name ?? worktree?.branch ?? "-").replaceAll(/[\u0000-\u001f\u007f]/g, "");
+    renderer.setTerminalTitle(`CodePanes: ${name}`);
+  };
   actionsPanel.setWorktree(worktreesPanel.selectedTarget());
   updateWorktreeChip(worktreesPanel.activeWorktree);
+  updateTerminalTitle(worktreesPanel.activeWorktree);
   const prompt = new Prompt(renderer);
   const promptPanel = prompt.panel;
   const promptLabel = prompt.label;
@@ -164,6 +169,7 @@ export async function runApp(): Promise<void> {
     const target = worktreesPanel.selectedTarget();
     actionsPanel.setWorktree(worktreesPanel.activeWorktree ?? target);
     updateWorktreeChip(worktreesPanel.activeWorktree ?? target);
+    updateTerminalTitle(worktreesPanel.activeWorktree ?? target);
   };
 
   const closePrompt = (): void => {
@@ -541,6 +547,7 @@ export async function runApp(): Promise<void> {
     }
     worktreesPanel.setActiveWorktree(target);
     updateWorktreeChip(target);
+    updateTerminalTitle(target);
     actionsPanel.setWorktree(target);
     void openWorktree(target, false).catch((error: unknown) => {
       footerText.content = `Unable to start lazygit: ${String(error)}`;
@@ -598,6 +605,7 @@ export async function runApp(): Promise<void> {
         const target = worktreesPanel.selectedTarget();
         worktreesPanel.setActiveWorktree(target);
         updateWorktreeChip(target);
+        updateTerminalTitle(target);
         actionsPanel.setWorktree(target);
         if (target) {
           void openWorktree(target, false).catch((error: unknown) => {
