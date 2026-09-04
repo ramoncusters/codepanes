@@ -16,6 +16,7 @@ export class WorktreeRow {
   private readonly name: TextRenderable;
   private readonly branch: TextRenderable;
   private readonly remote: TextRenderable;
+  private worktree: Worktree;
   private theme: Theme;
 
   constructor(
@@ -25,6 +26,7 @@ export class WorktreeRow {
     theme: Theme,
   ) {
     this.theme = theme;
+    this.worktree = worktree;
     this.panel = new BoxRenderable(renderer, { height: 1, width: "100%", flexDirection: "row" });
     this.cursor = new TextRenderable(renderer, { width: 2 });
     this.indicator = new TextRenderable(renderer, { width: 2 });
@@ -32,7 +34,7 @@ export class WorktreeRow {
     const nameSeparator = new TextRenderable(renderer, { content: "│ ", width: 2 });
     this.branch = new TextRenderable(renderer, { width: 18 });
     const branchSeparator = new TextRenderable(renderer, { content: "│ ", width: 2 });
-    this.remote = new TextRenderable(renderer, { flexGrow: 1 });
+    this.remote = new TextRenderable(renderer, { width: 18, flexShrink: 1 });
     this.panel.add(this.cursor);
     this.panel.add(this.indicator);
     this.panel.add(this.name);
@@ -40,15 +42,17 @@ export class WorktreeRow {
     this.panel.add(this.branch);
     this.panel.add(branchSeparator);
     this.panel.add(this.remote);
+    this.panel.onSizeChange = () => this.renderRemote();
     this.update(worktree, state);
   }
 
   update(worktree: Worktree, state: WorktreeRowState): void {
+    this.worktree = worktree;
     this.cursor.content = state.cursorSelected ? "› " : "  ";
     this.indicator.content = `${state.selected ? "✓" : state.active ? "●" : " "} `;
     this.name.content = (worktree.name ?? path.basename(worktree.path)).padEnd(18, " ").slice(0, 18);
-    this.branch.content = worktree.branch.padEnd(18, " ").slice(0, 18);
-    this.remote.content = worktree.remote ? `● ${worktree.remote}` : "○ local only";
+    this.branch.content = this.truncateBranch(worktree.branch, 18);
+    this.renderRemote();
     this.panel.backgroundColor = state.cursorSelected ? this.theme.focusedBackground : this.theme.panelBackground;
     this.cursor.fg = this.theme.accent;
     this.indicator.fg = this.theme.success ?? this.theme.accent;
@@ -59,5 +63,18 @@ export class WorktreeRow {
 
   applyTheme(theme: Theme): void {
     this.theme = theme;
+  }
+
+  private renderRemote(): void {
+    if (!this.worktree.remote) {
+      this.remote.content = "○";
+      return;
+    }
+    this.remote.content = this.panel.width >= 72 ? `● ${this.worktree.remote}` : "●";
+  }
+
+  private truncateBranch(branch: string, width: number): string {
+    if (branch.length <= width) return branch.padEnd(width, " ");
+    return `${branch.slice(0, width - 3)}...`;
   }
 }
