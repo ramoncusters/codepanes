@@ -56,9 +56,9 @@ export class WorktreeRow {
     this.panel.backgroundColor = state.cursorSelected ? this.theme.focusedBackground : "transparent";
     this.cursor.fg = this.theme.accent;
     this.indicator.fg = this.theme.success ?? this.theme.accent;
-    this.name.fg = this.theme.text;
+    this.name.fg = this.theme.accent;
     this.branch.fg = this.theme.muted;
-    this.remote.fg = worktree.remote ? this.theme.success ?? this.theme.accent : this.theme.muted;
+    this.remote.fg = this.theme.muted;
   }
 
   applyTheme(theme: Theme): void {
