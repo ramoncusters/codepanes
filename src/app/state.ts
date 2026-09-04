@@ -8,6 +8,7 @@ export type PromptMode =
   | "delete-branches"
   | "apply-theme"
   | "switch-actions"
+  | "select-base"
   | null;
 
 export type AppState = {
@@ -23,6 +24,7 @@ export type AppState = {
   pendingTheme: Theme | null;
   worktreeOperationActive: boolean;
   pendingWorktreeSelection: { index: number; path: string } | null;
+  pendingBaseBranch: string | null;
 };
 
 export function createAppState(): AppState {
@@ -39,5 +41,6 @@ export function createAppState(): AppState {
     pendingTheme: null,
     worktreeOperationActive: false,
     pendingWorktreeSelection: null,
+    pendingBaseBranch: null,
   };
 }

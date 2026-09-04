@@ -16,7 +16,7 @@ import {
   type TerminalColors,
 } from "@opentui/core";
 import { configPath, loadConfig, projectName, saveConfig } from "../services/config.js";
-import { bareRoot, getWorktrees, gitRoot } from "../services/git.js";
+import { bareRoot, getBranches, getWorktrees, gitRoot } from "../services/git.js";
 import { spawnPty } from "../services/pty.js";
 import { applyEmbeddedTerminalPalette } from "../services/terminalPalette.js";
 import { TerminalPanel } from "../components/TerminalPanel.js";
@@ -29,9 +29,10 @@ import { Footer } from "../components/Footer.js";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.js";
 import { keyHints } from "../components/keyHints.js";
 import { ActionsPanel } from "../components/ActionsPanel.js";
+import { BranchSelector } from "../components/BranchSelector.js";
 import { expandWorktreeCommand, runExternalCommand, runInteractiveCommand } from "../services/commands.js";
 import { getTheme, loadThemes, type Theme } from "../services/themes.js";
-import type { Action, TabName, Worktree } from "../types.js";
+import type { Action, BranchOption, TabName, Worktree } from "../types.js";
 import type { IPty } from "node-pty";
 import { createKeybindingResolver, ensureDefaultKeybindings } from "./keybindings.js";
 import { createAppState } from "./state.js";
@@ -156,6 +157,12 @@ export async function runApp(): Promise<void> {
   const keybindingsPanel = keybindingsHelp.panel;
   const keybindingsText = keybindingsHelp.text;
   root.add(promptPanel);
+  const branchSelector = new BranchSelector(renderer, (branch: BranchOption) => {
+    branchSelector.close();
+    state.pendingBaseBranch = branch.ref;
+    openPrompt("create", "New worktree (<type>/<name>):");
+  });
+  root.add(branchSelector.panel);
   root.add(keybindingsPanel);
   const themeSwitcher = new ThemeSwitcher(renderer, availableThemes, (theme) => {
     appliedTheme = theme;
@@ -206,6 +213,7 @@ export async function runApp(): Promise<void> {
     prompt.applyTheme(theme);
     keybindingsHelp.applyTheme(theme);
     themeSwitcher.applyTheme(theme);
+    branchSelector.applyTheme(theme);
     tabs.selectedTextColor = theme.text;
     tabs.focusedTextColor = theme.text;
     worktreeChip.panel.bg = theme.focusedBackground;
@@ -410,7 +418,9 @@ export async function runApp(): Promise<void> {
     }
     const root = await bareRoot(cwd);
     const selectedPath = [...selectedWorktrees][0];
-    const base = selectedPath ? worktrees.find((worktree) => worktree.path === selectedPath)?.branch : "main";
+    const base = state.pendingBaseBranch
+      ?? (selectedPath ? worktrees.find((worktree) => worktree.path === selectedPath)?.branch : "main");
+    state.pendingBaseBranch = null;
     const target = path.join(root, branchName);
     state.worktreeOperationActive = true;
     worktreesPanel.beginCreating({ path: target, branch: branchName });
@@ -736,7 +746,11 @@ export async function runApp(): Promise<void> {
       select.blur();
       void refreshWorktrees();
     } else if (action === "create-worktree") {
-      openPrompt("create", "New worktree (<type>/<name>):");
+      void getBranches(cwd).then((branches) => {
+        branchSelector.open(branches, appliedTheme);
+      }).catch((error: unknown) => {
+        footerText.content = `Unable to load branches: ${String(error)}`;
+      });
     } else if (action === "delete-worktrees") {
       const targets = worktrees.filter((worktree) => selectedWorktrees.has(worktree.path));
       if (targets.length === 0) {
@@ -764,6 +778,13 @@ export async function runApp(): Promise<void> {
       if (key.name === "?" || (state.configInstructionsActive && key.name === "escape")) {
         key.preventDefault();
         toggleConfigInstructions();
+      }
+      return;
+    }
+    if (branchSelector.panel.visible) {
+      if (key.name === "escape") {
+        key.preventDefault();
+        branchSelector.close();
       }
       return;
     }

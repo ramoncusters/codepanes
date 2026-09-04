@@ -1,4 +1,5 @@
 export type Worktree = { path: string; branch: string; name?: string; remote?: string };
+export type BranchOption = { name: string; ref: string; remote: boolean };
 export type TabName = "Worktrees" | "Lazygit" | "Actions" | "Global";
 export type CommandTarget = "embedded" | "external" | "external-terminal";
 export type Keybinding = {
