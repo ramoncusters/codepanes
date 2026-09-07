@@ -111,10 +111,30 @@ export type PipelineJob = {
   name: string;
   status: PipelineStatus;
   logAvailable: boolean;
+  startedAt?: string;
+  finishedAt?: string;
+  url?: string;
+  stageId?: string;
+};
+
+export type PipelineStage = {
+  id: string;
+  name: string;
+  status: PipelineStatus;
+  jobs: PipelineJob[];
+  startedAt?: string;
+  finishedAt?: string;
 };
 
 export type PipelineDetails = Pipeline & {
+  stages: PipelineStage[];
   jobs: PipelineJob[];
+  capabilities: {
+    stages: boolean;
+    jobs: boolean;
+    logs: boolean;
+    limitations: string[];
+  };
 };
 
 export type IssueStatus = "open" | "closed" | "unknown";
@@ -148,6 +168,8 @@ export type CollaborationProviderCapabilities = {
   pullRequestCommentStatus: boolean;
   pullRequestActions: boolean;
   pipelines: boolean;
+  pipelineStages: boolean;
+  pipelineJobs: boolean;
   pipelineLogs: boolean;
   pipelineControls: boolean;
   issues: boolean;

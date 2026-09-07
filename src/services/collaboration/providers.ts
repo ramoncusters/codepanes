@@ -9,6 +9,8 @@ import type {
   IssueDetails,
   Pipeline,
   PipelineDetails,
+  PipelineJob,
+  PipelineStatus,
   PullRequest,
   PullRequestComment,
   PullRequestCommentInput,
@@ -25,8 +27,18 @@ const unsupported = (operation: string): Promise<never> =>
   Promise.reject(new Error(`${operation} is not implemented for this provider yet`));
 
 async function runJsonCommand<T>(command: string, args: string[]): Promise<T> {
-  const { stdout } = await execFileAsync(command, args, { maxBuffer: 10 * 1024 * 1024 });
-  return JSON.parse(stdout) as T;
+  try {
+    const { stdout } = await execFileAsync(command, args, { maxBuffer: 10 * 1024 * 1024 });
+    return JSON.parse(stdout) as T;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`${command} request failed: ${detail}`);
+  }
+}
+
+export function isAuthenticationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /authentication|unauthori[sz]ed|not logged in|login required|sign in|status code 401|status code 403|AADSTS/i.test(message);
 }
 
 async function runTextCommand(command: string, args: string[]): Promise<string> {
@@ -107,6 +119,35 @@ type GitHubReviewComment = {
   html_url?: string;
 };
 
+type GitHubWorkflowRun = {
+  id: number;
+  name?: string;
+  display_title?: string;
+  status?: string;
+  conclusion?: string | null;
+  head_branch?: string | null;
+  head_sha?: string | null;
+  run_started_at?: string | null;
+  updated_at?: string;
+  created_at?: string;
+  html_url: string;
+};
+
+type GitHubWorkflowRunsResponse = {
+  total_count: number;
+  workflow_runs: GitHubWorkflowRun[];
+};
+
+type GitHubJob = {
+  id: number;
+  name: string;
+  status?: string;
+  conclusion?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  html_url?: string;
+};
+
 export class GitHubProvider extends CliProvider {
   readonly id = "github" as const;
   readonly capabilities: CollaborationProviderCapabilities = {
@@ -115,8 +156,10 @@ export class GitHubProvider extends CliProvider {
     pullRequestComments: true,
     pullRequestCommentStatus: false,
     pullRequestActions: true,
-    pipelines: false,
-    pipelineLogs: false,
+    pipelines: true,
+    pipelineStages: false,
+    pipelineJobs: true,
+    pipelineLogs: true,
     pipelineControls: false,
     issues: false,
     issueMutations: false,
@@ -262,6 +305,59 @@ export class GitHubProvider extends CliProvider {
     return this.getPullRequest(id);
   }
 
+  async listPipelines(query: CollaborationQuery): Promise<CollaborationPage<Pipeline>> {
+    const page = Math.max(1, Number(query.cursor ?? "1") || 1);
+    const params = new URLSearchParams({
+      per_page: "30",
+      page: String(page),
+    });
+    if (query.branch) params.set("branch", query.branch);
+    const response = await runJsonCommand<GitHubWorkflowRunsResponse>("gh", [
+      "api",
+      `repos/${this.owner}/${this.repository}/actions/runs?${params}`,
+    ]);
+    const items = response.workflow_runs ?? [];
+    return {
+      items: items
+        .filter((run) => !query.search || (run.name ?? run.display_title ?? "").toLowerCase().includes(query.search.toLowerCase()))
+        .map((run) => this.mapPipeline(run)),
+      hasNextPage: items.length === 30,
+      nextCursor: String(page + 1),
+    };
+  }
+
+  async getPipeline(id: string): Promise<PipelineDetails> {
+    const [run, jobsResponse] = await Promise.all([
+      runJsonCommand<GitHubWorkflowRun>("gh", [
+        "api",
+        `repos/${this.owner}/${this.repository}/actions/runs/${id}`,
+      ]),
+      runJsonCommand<{ total_count: number; jobs: GitHubJob[] }>("gh", [
+        "api",
+        `repos/${this.owner}/${this.repository}/actions/runs/${id}/jobs?per_page=100`,
+      ]),
+    ]);
+    const jobs = (jobsResponse.jobs ?? []).map((job) => this.mapPipelineJob(job));
+    return {
+      ...this.mapPipeline(run),
+      stages: [],
+      jobs,
+      capabilities: {
+        stages: false,
+        jobs: true,
+        logs: true,
+        limitations: ["GitHub Actions does not expose pipeline stages; jobs are shown directly."],
+      },
+    };
+  }
+
+  getPipelineLog(jobId: string): Promise<string> {
+    return runTextCommand("gh", [
+      "api",
+      `repos/${this.owner}/${this.repository}/actions/jobs/${jobId}/logs`,
+    ]);
+  }
+
   private mapPullRequest(pullRequest: GitHubPullRequest): PullRequest {
     return {
       id: String(pullRequest.number),
@@ -290,6 +386,31 @@ export class GitHubProvider extends CliProvider {
       line: comment.line ?? undefined,
       side: comment.side?.toLowerCase() as PullRequestCommentSide | undefined,
       url: comment.html_url,
+    };
+  }
+
+  private mapPipeline(run: GitHubWorkflowRun): Pipeline {
+    return {
+      id: String(run.id),
+      name: run.name ?? run.display_title ?? `Workflow run ${run.id}`,
+      status: mapPipelineStatus(run.status, run.conclusion),
+      branch: run.head_branch ?? undefined,
+      commit: run.head_sha ?? undefined,
+      startedAt: run.run_started_at ?? run.created_at ?? undefined,
+      finishedAt: run.status === "completed" ? run.updated_at : undefined,
+      url: run.html_url,
+    };
+  }
+
+  private mapPipelineJob(job: GitHubJob): PipelineJob {
+    return {
+      id: String(job.id),
+      name: job.name,
+      status: mapPipelineStatus(job.status, job.conclusion),
+      logAvailable: true,
+      startedAt: job.started_at ?? undefined,
+      finishedAt: job.completed_at ?? undefined,
+      url: job.html_url,
     };
   }
 }
@@ -327,6 +448,36 @@ type AzurePullRequestThread = {
   url?: string;
 };
 
+type AzurePipelineRun = {
+  id: number;
+  name?: string;
+  state?: string;
+  status?: string;
+  result?: string | null;
+  sourceBranch?: string;
+  sourceVersion?: string;
+  createdDate?: string;
+  queueTime?: string;
+  startTime?: string;
+  finishedDate?: string | null;
+  finishTime?: string | null;
+  url?: string;
+  definition?: { id?: number; name?: string };
+};
+
+type AzureTimelineRecord = {
+  id: string;
+  name?: string;
+  type?: string;
+  state?: string;
+  result?: string | null;
+  startTime?: string;
+  finishTime?: string;
+  parentId?: string;
+  log?: { id?: number };
+  url?: string;
+};
+
 export class AzureProvider extends CliProvider {
   readonly id = "azure" as const;
   readonly capabilities: CollaborationProviderCapabilities = {
@@ -335,8 +486,10 @@ export class AzureProvider extends CliProvider {
     pullRequestComments: true,
     pullRequestCommentStatus: true,
     pullRequestActions: true,
-    pipelines: false,
-    pipelineLogs: false,
+    pipelines: true,
+    pipelineStages: true,
+    pipelineJobs: true,
+    pipelineLogs: true,
     pipelineControls: false,
     issues: false,
     issueMutations: false,
@@ -609,5 +762,181 @@ export class AzureProvider extends CliProvider {
     if (status.toLowerCase() === "active") return "active";
     if (status.toLowerCase() === "fixed") return "resolved";
     return "closed";
+  }
+
+  async listPipelines(query: CollaborationQuery): Promise<CollaborationPage<Pipeline>> {
+    const args = [
+      "pipelines",
+      "runs",
+      "list",
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--project",
+      this.project,
+      "--top",
+      "30",
+      "--query-order",
+      "QueueTimeDesc",
+      "--output",
+      "json",
+    ];
+    if (query.branch) args.splice(-2, 0, "--branch", query.branch);
+    const runs = await runJsonCommand<AzurePipelineRun[]>("az", args);
+    return {
+      items: runs
+        .filter((run) => !query.search || (run.name ?? run.definition?.name ?? "").toLowerCase().includes(query.search.toLowerCase()))
+        .map((run) => this.mapPipeline(run)),
+      hasNextPage: false,
+    };
+  }
+
+  async getPipeline(id: string): Promise<PipelineDetails> {
+    const run = await runJsonCommand<AzurePipelineRun>("az", [
+      "pipelines",
+      "runs",
+      "show",
+      "--id",
+      id,
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--project",
+      this.project,
+      "--output",
+      "json",
+    ]);
+    const timeline = await runJsonCommand<{ records?: AzureTimelineRecord[] }>("az", [
+      "devops",
+      "invoke",
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--area",
+      "build",
+      "--resource",
+      "timeline",
+      "--route-parameters",
+      `project=${this.project}`,
+      `buildId=${id}`,
+      "--api-version",
+      "7.1",
+      "--output",
+      "json",
+    ]);
+    const records = timeline.records ?? [];
+    const stageRecords = records.filter((record) => record.type?.toLowerCase() === "stage");
+    const jobRecords = records.filter((record) => record.type?.toLowerCase() === "job");
+    const jobs = jobRecords.map((record) => this.mapPipelineJob(record, id));
+    const stages = stageRecords.map((record) => ({
+      id: record.id,
+      name: record.name ?? record.id,
+      status: mapPipelineStatus(record.state, record.result),
+      startedAt: record.startTime,
+      finishedAt: record.finishTime,
+      jobs: jobs.filter((job) => job.stageId === record.id),
+    }));
+    return {
+      ...this.mapPipeline(run),
+      stages,
+      jobs,
+      capabilities: {
+        stages: stageRecords.length > 0,
+        jobs: jobRecords.length > 0,
+        logs: jobs.some((job) => job.logAvailable),
+        limitations: stageRecords.length === 0
+          ? ["Azure DevOps did not return stage records for this run."]
+          : [],
+      },
+    };
+  }
+
+  async getPipelineLog(jobId: string): Promise<string> {
+    const separator = jobId.indexOf(":");
+    if (separator < 1) throw new Error("Azure pipeline job does not have a valid run reference");
+    const runId = jobId.slice(0, separator);
+    const recordId = jobId.slice(separator + 1);
+    const timeline = await runJsonCommand<{ records?: AzureTimelineRecord[] }>("az", [
+      "devops",
+      "invoke",
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--area",
+      "build",
+      "--resource",
+      "timeline",
+      "--route-parameters",
+      `project=${this.project}`,
+      `buildId=${runId}`,
+      "--api-version",
+      "7.1",
+      "--output",
+      "json",
+    ]);
+    const record = timeline.records?.find((candidate) => candidate.id === recordId);
+    const logId = record?.log?.id;
+    if (!logId) throw new Error("Azure DevOps did not provide a log for this job");
+    return runTextCommand("az", [
+      "devops",
+      "invoke",
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--area",
+      "build",
+      "--resource",
+      "logs",
+      "--route-parameters",
+      `project=${this.project}`,
+      `buildId=${runId}`,
+      `logId=${logId}`,
+      "--api-version",
+      "7.1",
+      "--accept-media-type",
+      "text/plain",
+    ]);
+  }
+
+  private mapPipeline(run: AzurePipelineRun): Pipeline {
+    return {
+      id: String(run.id),
+      name: run.name ?? run.definition?.name ?? `Pipeline run ${run.id}`,
+      status: mapPipelineStatus(run.state ?? run.status, run.result),
+      branch: run.sourceBranch?.replace(/^refs\/heads\//, ""),
+      commit: run.sourceVersion,
+      startedAt: run.startTime ?? run.createdDate ?? run.queueTime,
+      finishedAt: run.finishTime ?? run.finishedDate ?? undefined,
+      url: run.url ?? "",
+    };
+  }
+
+  private mapPipelineJob(record: AzureTimelineRecord, runId: string): PipelineJob {
+    return {
+      id: `${runId}:${record.id}`,
+      name: record.name ?? record.id,
+      status: mapPipelineStatus(record.state, record.result),
+      logAvailable: record.log?.id !== undefined,
+      startedAt: record.startTime,
+      finishedAt: record.finishTime,
+      stageId: record.parentId,
+      url: record.url,
+    };
+  }
+}
+
+function mapPipelineStatus(state?: string, result?: string | null): PipelineStatus {
+  const normalizedResult = result?.toLowerCase();
+  if (normalizedResult === "succeeded" || normalizedResult === "success") return "succeeded";
+  if (normalizedResult === "failed" || normalizedResult === "failure") return "failed";
+  if (normalizedResult === "canceled" || normalizedResult === "cancelled") return "canceled";
+  switch (state?.toLowerCase()) {
+    case "queued":
+      return "queued";
+    case "inprogress":
+    case "in_progress":
+    case "running":
+      return "running";
+    case "cancelling":
+      return "canceled";
+    case "completed":
+      return "unknown";
+    default:
+      return "unknown";
   }
 }
