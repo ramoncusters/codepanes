@@ -14,7 +14,7 @@ import {
   type TerminalColors,
 } from "@opentui/core";
 import { configPath, loadConfig, projectName, saveConfig } from "../services/config.js";
-import { bareRoot, getBranches, getCommitRefs, getTagRefs, getWorktrees, gitRoot } from "../services/git.js";
+import { bareRoot, getBranches, getCommitRefs, getRemoteUrl, getTagRefs, getWorktrees, gitRoot } from "../services/git.js";
 import { spawnPty } from "../services/pty.js";
 import { applyEmbeddedTerminalPalette } from "../services/terminalPalette.js";
 import { TerminalPanel } from "../components/TerminalPanel.js";
@@ -27,15 +27,17 @@ import { Footer } from "../components/Footer.js";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.js";
 import { keyBindingsHelp, keyHints } from "../components/keyHints.js";
 import { ActionsPanel } from "../components/ActionsPanel.js";
+import { CollaborationPanel } from "../components/CollaborationPanel.js";
 import { BranchSelector } from "../components/BranchSelector.js";
 import { CreationModeSelector } from "../components/CreationModeSelector.js";
 import { DetachedRefSelector } from "../components/DetachedRefSelector.js";
-import { expandWorktreeCommand, runExternalCommand, runInteractiveCommand } from "../services/commands.js";
+import { expandWorktreeCommand, runAuthenticationCommand, runExternalCommand, runInteractiveCommand } from "../services/commands.js";
 import { getTheme, loadThemes, type Theme } from "../services/themes.js";
 import type { Action, BranchOption, DetachedRef, TabName, Worktree, WorktreeCreationMode } from "../types.js";
 import type { IPty } from "node-pty";
 import { createKeybindingResolver, ensureDefaultKeybindings } from "./keybindings.js";
 import { createAppState } from "./state.js";
+import { createCollaborationProvider } from "../services/collaboration/factory.js";
 
 type KeyInputEvents = {
   addListener(event: "keypress", handler: (key: KeyEvent) => void): void;
@@ -44,6 +46,8 @@ type KeyInputEvents = {
 
 export async function runApp(): Promise<void> {
   const cwd = process.cwd();
+  const remoteUrl = await getRemoteUrl(cwd).catch(() => undefined);
+  const collaborationProvider = remoteUrl ? createCollaborationProvider(remoteUrl) : undefined;
   const config = await loadConfig();
   const availableThemes = await loadThemes();
   if (!config.globalKeybindings?.Global) {
@@ -123,6 +127,12 @@ export async function runApp(): Promise<void> {
     projectConfig.actions ?? [],
     commandShell,
     terminalBackground,
+  );
+  const collaborationPanel = new CollaborationPanel(
+    renderer,
+    terminalBackground,
+    collaborationProvider,
+    (provider) => openAuthenticationPrompt(provider),
   );
   const worktreePanel = worktreesPanel.panel;
   const select = worktreesPanel.select;
@@ -241,7 +251,8 @@ export async function runApp(): Promise<void> {
     promptPanel.visible = false;
     promptInput.blur();
     if (state.activeTab === 0) worktreesPanel.focusOverview();
-    else if (state.activeTab === 2) actionsPanel.select.focus();
+    else if (state.activeTab === 2) collaborationPanel.focusResource();
+    else if (state.activeTab === 3) actionsPanel.select.focus();
     else terminal.focus();
   };
 
@@ -254,7 +265,8 @@ export async function runApp(): Promise<void> {
     themeSwitcher.panel.visible = false;
     themeSwitcher.select.blur();
     if (state.activeTab === 0) worktreesPanel.focusOverview();
-    else if (state.activeTab === 2) actionsPanel.select.focus();
+    else if (state.activeTab === 2) collaborationPanel.focusResource();
+    else if (state.activeTab === 3) actionsPanel.select.focus();
     else terminal.focus();
   };
 
@@ -263,6 +275,7 @@ export async function runApp(): Promise<void> {
     worktreesPanel.applyTheme(theme);
     lazygitTerminal.applyTheme(theme);
     actionsPanel.applyTheme(theme);
+    collaborationPanel.applyTheme(theme);
     configEditor.applyTheme(theme);
     footer.applyTheme(theme);
     prompt.applyTheme(theme);
@@ -285,7 +298,8 @@ export async function runApp(): Promise<void> {
     state.keybindingsActive = false;
     keybindingsPanel.visible = false;
     if (state.activeTab === 0) worktreesPanel.focusOverview();
-    else if (state.activeTab === 2) actionsPanel.select.focus();
+    else if (state.activeTab === 2) collaborationPanel.focusResource();
+    else if (state.activeTab === 3) actionsPanel.select.focus();
     else terminal.focus();
   };
 
@@ -296,7 +310,8 @@ export async function runApp(): Promise<void> {
     configInstructionsPanel.visible = false;
     configEditorPanel.visible = false;
     if (state.activeTab === 0) worktreesPanel.focusOverview();
-    else if (state.activeTab === 2) actionsPanel.select.focus();
+    else if (state.activeTab === 2) collaborationPanel.focusResource();
+    else if (state.activeTab === 3) actionsPanel.select.focus();
     else terminal.focus();
   };
 
@@ -338,7 +353,7 @@ export async function runApp(): Promise<void> {
   };
 
   const openPrompt = (
-    mode: "create" | "delete" | "delete-branches" | "delete-remote" | "switch-actions",
+    mode: "create" | "delete" | "delete-branches" | "delete-remote" | "authenticate" | "switch-actions",
     label: string,
   ): void => {
     if (mode === "create") promptPanel.height = 7;
@@ -351,6 +366,16 @@ export async function runApp(): Promise<void> {
     select.blur();
     actionsPanel.select.blur();
     promptInput.focus();
+  };
+
+  const openAuthenticationPrompt = (provider: "github" | "azure"): void => {
+    const command = provider === "github"
+      ? { name: "gh", args: ["auth", "login", "--web"] }
+      : { name: "az", args: ["login"] };
+    void runAuthenticationCommand(command.name, command.args, cwd).catch((error: unknown) => {
+      footerText.content = `Unable to start browser authentication: ${String(error)}`;
+    });
+    openPrompt("authenticate", `Complete ${provider} authentication in the new window, then type y to retry:`);
   };
 
   const deletePromptLabel = (targets: Worktree[]): string =>
@@ -409,6 +434,7 @@ export async function runApp(): Promise<void> {
   actionsPanel.applyPalette(terminalPalette);
   body.add(worktreePanel);
   body.add(terminalPanel);
+  body.add(collaborationPanel.panel);
   body.add(actionsPanel.panel);
   // root.add(header);
   root.add(tabs);
@@ -559,7 +585,8 @@ export async function runApp(): Promise<void> {
     state.activeTab = index;
     worktreePanel.visible = index === 0;
     terminalPanel.visible = index === 1;
-    actionsPanel.panel.visible = index === 2;
+    collaborationPanel.panel.visible = index === 2;
+    actionsPanel.panel.visible = index === 3;
 
     if (index === 0) {
       state.terminalFocused = false;
@@ -588,6 +615,17 @@ export async function runApp(): Promise<void> {
         ["j/k", "navigate"],
         ["C", "config"],
         ["Tab", "switch tabs"],
+        ["Q", "quit"],
+      ]);
+    } else if (index === 2) {
+      state.terminalFocused = false;
+      select.blur();
+      terminal.blur();
+      if (!state.keybindingsActive && !state.configEditorActive) collaborationPanel.focusResource();
+      footerText.content = keyHints(appliedTheme, [
+        ["j/k", "choose resource"],
+        ["Tab", "switch tabs"],
+        ["?", "keybindings"],
         ["Q", "quit"],
       ]);
     } else {
@@ -700,6 +738,16 @@ export async function runApp(): Promise<void> {
         }
       }
       closePrompt();
+      return;
+    }
+    if (mode === "authenticate") {
+      const answer = value.toLowerCase();
+      if (answer !== "y" && answer !== "n") {
+        footerText.content = "Please type y after authentication or n to cancel.";
+        return;
+      }
+      closePrompt();
+      if (answer === "y") collaborationPanel.retryCurrentResource();
       return;
     }
     closePrompt();
@@ -834,17 +882,17 @@ export async function runApp(): Promise<void> {
       return;
     }
     if (action === "run-action") {
-      if (state.activeTab !== 2) return;
+      if (state.activeTab !== 3) return;
       actionsPanel.runSelected(selectedTarget());
       return;
     }
     if (action === "stop-action") {
-      if (state.activeTab !== 2) return;
+      if (state.activeTab !== 3) return;
       actionsPanel.stopSelected();
       return;
     }
     if (action === "stop-actions") {
-      if (state.activeTab !== 2) return;
+      if (state.activeTab !== 3) return;
       actionsPanel.stopAll();
       return;
     }
@@ -944,7 +992,7 @@ export async function runApp(): Promise<void> {
     }
     if (!state.configEditorActive && key.name === "tab") {
       key.preventDefault();
-      const nextTab = key.shift ? (state.activeTab + 2) % 3 : (state.activeTab + 1) % 3;
+      const nextTab = key.shift ? (state.activeTab + 3) % 4 : (state.activeTab + 1) % 4;
       tabs.setSelectedIndex(nextTab);
       updateTab(nextTab);
       return;
@@ -952,7 +1000,7 @@ export async function runApp(): Promise<void> {
     if (state.activeTab === 1) {
       return;
     }
-    if (state.activeTab === 2 && !state.promptActive && !state.keybindingsActive && !state.configEditorActive) {
+    if (state.activeTab === 3 && !state.promptActive && !state.keybindingsActive && !state.configEditorActive) {
       if (key.name === "h") {
         key.preventDefault();
         actionsPanel.focusActions();
@@ -1004,10 +1052,16 @@ export async function runApp(): Promise<void> {
       else showKeybindings("Worktrees");
       return;
     }
-    if (state.activeTab === 2 && key.name === "?" && !key.ctrl && !key.meta) {
+    if (state.activeTab === 3 && key.name === "?" && !key.ctrl && !key.meta) {
       key.preventDefault();
       if (state.keybindingsActive) closeKeybindings();
       else showKeybindings("Actions");
+      return;
+    }
+    if (state.activeTab === 2 && key.name === "?" && !key.ctrl && !key.meta) {
+      key.preventDefault();
+      if (state.keybindingsActive) closeKeybindings();
+      else showKeybindings("Collaboration");
       return;
     }
     if (state.keybindingsActive && key.name === "escape") {
@@ -1024,7 +1078,7 @@ export async function runApp(): Promise<void> {
         return;
       }
     }
-    if (state.activeTab === 2 && !state.promptActive && !key.ctrl && !key.meta) {
+    if (state.activeTab === 3 && !state.promptActive && !key.ctrl && !key.meta) {
       const keybindings = getKeybindings("Actions");
       const binding = keybindings[key.shift ? key.name.toUpperCase() : key.name]
         ?? (key.name === "return" ? keybindings.enter : undefined);

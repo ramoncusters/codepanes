@@ -27,6 +27,83 @@ export function runExternalCommand(shell: string, command: string, cwd: string):
   });
 }
 
+export function runDetachedCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: { ...process.env },
+      stdio: "ignore",
+      detached: true,
+    });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
+export function runAuthenticationCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const isWsl = Boolean(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
+    const spawnDetached = (program: string, programArgs: string[]): void => {
+      const child = spawn(program, programArgs, {
+        cwd,
+        env: { ...process.env },
+        stdio: "ignore",
+        detached: true,
+      });
+      child.once("error", reject);
+      child.once("spawn", () => {
+        child.unref();
+        resolve();
+      });
+    };
+    if (isWsl) {
+      const child = spawn("wt.exe", [
+        "wsl.exe",
+        "-d",
+        process.env.WSL_DISTRO_NAME ?? "Ubuntu",
+        "--",
+        command,
+        ...args,
+      ], {
+        cwd,
+        env: { ...process.env },
+        stdio: "ignore",
+        detached: true,
+      });
+      child.once("error", reject);
+      child.once("spawn", () => {
+        child.unref();
+        resolve();
+      });
+      return;
+    }
+    if (process.platform === "win32") {
+      spawnDetached("wt.exe", ["new-tab", command, ...args]);
+      return;
+    }
+    if (process.platform === "darwin") {
+      const script = `${command} ${args.map((arg) => `'${arg.replaceAll("'", "'\\''")}'`).join(" ")}`;
+      spawnDetached("osascript", [
+        "-e",
+        `tell application "Terminal" to do script "${script.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`,
+      ]);
+      return;
+    }
+    spawnDetached("x-terminal-emulator", ["-e", command, ...args]);
+  });
+}
+
 export function runInteractiveCommand(
   shell: string,
   command: string,

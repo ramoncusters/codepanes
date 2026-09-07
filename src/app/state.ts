@@ -7,6 +7,7 @@ export type PromptMode =
   | "delete"
   | "delete-branches"
   | "delete-remote"
+  | "authenticate"
   | "apply-theme"
   | "switch-actions"
   | "select-base"

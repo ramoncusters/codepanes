@@ -7,7 +7,7 @@ export type WorktreeCreationMode =
   | "existing-remote"
   | "detached-commit"
   | "detached-tag";
-export type TabName = "Worktrees" | "Lazygit" | "Actions" | "Global";
+export type TabName = "Worktrees" | "Lazygit" | "Collaboration" | "Actions" | "Global";
 export type CommandTarget = "embedded" | "external" | "external-terminal";
 export type Keybinding = {
   name: string;

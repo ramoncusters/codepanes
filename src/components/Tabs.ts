@@ -7,7 +7,7 @@ type TabTheme = {
   focusedBackground: string;
 };
 
-const tabNames = ["worktrees", "lazygit", "actions"];
+const tabNames = ["worktrees", "lazygit", "collaboration", "actions"];
 
 export class VariableTabs extends BoxRenderable {
   private readonly items: BoxRenderable[] = [];

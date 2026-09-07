@@ -46,6 +46,11 @@ export async function getWorktrees(cwd: string): Promise<Worktree[]> {
   }
 }
 
+export async function getRemoteUrl(cwd: string): Promise<string | undefined> {
+  const { stdout } = await execFileAsync("git", ["remote", "get-url", "origin"], { cwd });
+  return stdout.trim() || undefined;
+}
+
 export async function getBranches(cwd: string): Promise<BranchOption[]> {
   const { stdout } = await execFileAsync(
     "git",
