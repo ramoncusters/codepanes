@@ -1082,6 +1082,11 @@ export async function runApp(): Promise<void> {
     if (state.activeTab === 1) {
       return;
     }
+    if (state.activeTab === 2 && key.name === "return") {
+      key.preventDefault();
+      collaborationPanel.activateSelectedPullRequest();
+      return;
+    }
     if (state.activeTab === 2 && !state.promptActive && !state.keybindingsActive && !state.configEditorActive) {
       if (key.name === "l") {
         key.preventDefault();

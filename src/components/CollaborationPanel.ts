@@ -273,18 +273,7 @@ export class CollaborationPanel {
       if (resource) void this.showResource(resource.name, index);
     });
     this.pullRequestSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
-      const option = this.pullRequestSelect.options[index]?.value as PullRequestGroupOption | undefined;
-      if (!option) return;
-      if ("kind" in option && option.kind === "group") {
-        if (this.collapsedPullRequestGroups.has(option.status)) {
-          this.collapsedPullRequestGroups.delete(option.status);
-        } else {
-          this.collapsedPullRequestGroups.add(option.status);
-        }
-        this.renderPullRequestGroups();
-        return;
-      }
-      void this.showPullRequest(option as PullRequest);
+      this.activatePullRequestOption(index);
     });
     this.pipelineSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       const pipeline = this.pipelineSelect.options[index]?.value as Pipeline | undefined;
@@ -428,6 +417,10 @@ export class CollaborationPanel {
 
   retryCurrentResource(): void {
     void this.showResource(resources[this.selectedResourceIndex]?.name ?? "Pull requests", this.selectedResourceIndex);
+  }
+
+  activateSelectedPullRequest(): void {
+    this.activatePullRequestOption(this.pullRequestSelect.getSelectedIndex());
   }
 
   async createPullRequestComment(comment: PullRequestCommentInput): Promise<void> {
@@ -638,6 +631,21 @@ export class CollaborationPanel {
         }
         return options;
       });
+  }
+
+  private activatePullRequestOption(index: number): void {
+    const option = this.pullRequestSelect.options[index]?.value as PullRequestGroupOption | undefined;
+    if (!option) return;
+    if ("kind" in option && option.kind === "group") {
+      if (this.collapsedPullRequestGroups.has(option.status)) {
+        this.collapsedPullRequestGroups.delete(option.status);
+      } else {
+        this.collapsedPullRequestGroups.add(option.status);
+      }
+      this.renderPullRequestGroups();
+      return;
+    }
+    void this.showPullRequest(option as PullRequest);
   }
 
   private async showPullRequest(pullRequest: PullRequest): Promise<void> {
