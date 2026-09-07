@@ -1,6 +1,4 @@
-import { execFile } from "node:child_process";
 import path from "node:path";
-import { promisify } from "node:util";
 import {
   BoxRenderable,
   EmbeddedTerminalRenderable,
@@ -16,7 +14,7 @@ import {
   type TerminalColors,
 } from "@opentui/core";
 import { configPath, loadConfig, projectName, saveConfig } from "../services/config.js";
-import { bareRoot, getBranches, getWorktrees, gitRoot } from "../services/git.js";
+import { bareRoot, getBranches, getCommitRefs, getTagRefs, getWorktrees, gitRoot } from "../services/git.js";
 import { spawnPty } from "../services/pty.js";
 import { applyEmbeddedTerminalPalette } from "../services/terminalPalette.js";
 import { TerminalPanel } from "../components/TerminalPanel.js";
@@ -27,17 +25,17 @@ import { ConfigEditor } from "../components/ConfigEditor.js";
 import { createTabs, createWorktreeChip } from "../components/Tabs.js";
 import { Footer } from "../components/Footer.js";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.js";
-import { keyHints } from "../components/keyHints.js";
+import { keyBindingsHelp, keyHints } from "../components/keyHints.js";
 import { ActionsPanel } from "../components/ActionsPanel.js";
 import { BranchSelector } from "../components/BranchSelector.js";
+import { CreationModeSelector } from "../components/CreationModeSelector.js";
+import { DetachedRefSelector } from "../components/DetachedRefSelector.js";
 import { expandWorktreeCommand, runExternalCommand, runInteractiveCommand } from "../services/commands.js";
 import { getTheme, loadThemes, type Theme } from "../services/themes.js";
-import type { Action, BranchOption, TabName, Worktree } from "../types.js";
+import type { Action, BranchOption, DetachedRef, TabName, Worktree, WorktreeCreationMode } from "../types.js";
 import type { IPty } from "node-pty";
 import { createKeybindingResolver, ensureDefaultKeybindings } from "./keybindings.js";
 import { createAppState } from "./state.js";
-
-const execFileAsync = promisify(execFile);
 
 type KeyInputEvents = {
   addListener(event: "keypress", handler: (key: KeyEvent) => void): void;
@@ -159,10 +157,67 @@ export async function runApp(): Promise<void> {
   root.add(promptPanel);
   const branchSelector = new BranchSelector(renderer, (branch: BranchOption) => {
     branchSelector.close();
-    state.pendingBaseBranch = branch.ref;
-    openPrompt("create", "New worktree (<type>/<name>):");
+    state.pendingCreationBranch = branch;
+    if (state.pendingCreationMode === "new-branch") {
+      state.pendingBaseBranch = branch.ref;
+      openPrompt("create", `New worktree name (base: ${branch.ref}):`);
+    } else if (state.pendingCreationMode === "existing-local") {
+      openPrompt("create", `Worktree directory name (branch: ${branch.name}):`);
+    } else if (state.pendingCreationMode === "existing-remote") {
+      openPrompt("create", `Local branch name (remote: ${branch.ref}):`);
+    } else if (state.pendingCreationMode === "detached-commit") {
+      void getCommitRefs(cwd, branch.ref).then((refs) => {
+        if (refs.length === 0) {
+          footerText.content = `No commits found for ${branch.name}.`;
+          return;
+        }
+        detachedRefSelector.open(refs, branch.name, appliedTheme);
+      }).catch((error: unknown) => {
+        footerText.content = `Unable to load commits: ${String(error)}`;
+      });
+    }
   });
   root.add(branchSelector.panel);
+  const detachedRefSelector = new DetachedRefSelector(renderer, (ref) => {
+    detachedRefSelector.close();
+    state.pendingDetachedRef = ref;
+    const branch = state.pendingCreationBranch;
+    openPrompt("create", `Worktree directory name (detached: ${ref.name}):`);
+    if (!branch) footerText.content = "No detached branch is selected.";
+  });
+  root.add(detachedRefSelector.panel);
+  const creationModeSelector = new CreationModeSelector(renderer, (mode) => {
+    creationModeSelector.close();
+    state.pendingCreationMode = mode;
+    if (mode === "detached-tag") {
+      state.pendingCreationBranch = { name: "tags", ref: "", remote: false };
+      void getTagRefs(cwd).then((refs) => {
+        if (refs.length === 0) {
+          footerText.content = "No tags are available.";
+          return;
+        }
+        detachedRefSelector.open(refs, "all tags", appliedTheme);
+      }).catch((error: unknown) => {
+        footerText.content = `Unable to load tags: ${String(error)}`;
+      });
+      return;
+    }
+    void getBranches(cwd).then((branches) => {
+      const filtered = mode === "existing-local"
+        ? branches.filter((branch) => !branch.remote)
+        : mode === "existing-remote"
+        ? branches.filter((branch) => branch.remote)
+        : branches;
+      if (filtered.length === 0) {
+        footerText.content = `No ${mode === "existing-local" ? "local" : "remote"} branches are available.`;
+        return;
+      }
+      branchSelector.open(filtered, appliedTheme);
+    }).catch((error: unknown) => {
+      footerText.content = `Unable to load branches: ${String(error)}`;
+    });
+  });
+  root.add(creationModeSelector.panel);
   root.add(keybindingsPanel);
   const themeSwitcher = new ThemeSwitcher(renderer, availableThemes, (theme) => {
     appliedTheme = theme;
@@ -214,8 +269,14 @@ export async function runApp(): Promise<void> {
     keybindingsHelp.applyTheme(theme);
     themeSwitcher.applyTheme(theme);
     branchSelector.applyTheme(theme);
-    tabs.selectedTextColor = theme.text;
-    tabs.focusedTextColor = theme.text;
+    creationModeSelector.applyTheme(theme);
+    detachedRefSelector.applyTheme(theme);
+    tabs.applyTheme({
+      text: theme.muted,
+      accent: theme.accent,
+      background: theme.background,
+      focusedBackground: theme.focusedBackground,
+    });
     worktreeChip.panel.bg = theme.focusedBackground;
     worktreeChip.text.fg = theme.text;
   }
@@ -258,9 +319,11 @@ export async function runApp(): Promise<void> {
     const bindings = { ...getKeybindings("Global"), ...getKeybindings(tabName) };
     const lines = Object.entries(bindings).map(([key, binding]) => {
       const displayKey = key === "spacebar" ? "Space" : key;
-      return `${displayKey.padEnd(10)} ${binding.name}`;
+      return [displayKey, binding.name] as [string, string];
     });
-    keybindingsText.content = `${tabName} keybindings\n\n${lines.length > 0 ? lines.join("\n") : "No configured keybindings"}\n\nPress ? or Esc to close`;
+    keybindingsText.content = lines.length > 0
+      ? keyBindingsHelp(appliedTheme, tabName, lines)
+      : keyBindingsHelp(appliedTheme, tabName, [["-", "No configured keybindings"]]);
     state.keybindingsActive = true;
     keybindingsPanel.visible = true;
     select.blur();
@@ -275,7 +338,7 @@ export async function runApp(): Promise<void> {
   };
 
   const openPrompt = (
-    mode: "create" | "delete" | "delete-branches" | "switch-actions",
+    mode: "create" | "delete" | "delete-branches" | "delete-remote" | "switch-actions",
     label: string,
   ): void => {
     if (mode === "create") promptPanel.height = 7;
@@ -411,35 +474,38 @@ export async function runApp(): Promise<void> {
     }
   };
 
-  const createWorktree = async (branchName: string): Promise<void> => {
-    if (!/^[^/]+\/[^/]+$/.test(branchName) || branchName.includes("..")) {
-      footerText.content = "Invalid name. Use <type>/<name>.";
+  const createWorktree = async (
+    mode: WorktreeCreationMode,
+    name: string,
+    branch: BranchOption,
+    detachedRef?: DetachedRef,
+  ): Promise<void> => {
+    if (!name || path.isAbsolute(name) || path.win32.isAbsolute(name) || name.split(/[\\/]/).includes("..")) {
+      footerText.content = "Invalid worktree directory or branch name.";
+      return;
+    }
+    if (mode === "new-branch" && (!/^[^/]+\/[^/]+$/.test(name) || name.includes(".."))) {
+      footerText.content = "Invalid name. Use <type>/<name> for a new branch.";
       return;
     }
     const root = await bareRoot(cwd);
-    const selectedPath = [...selectedWorktrees][0];
-    const base = state.pendingBaseBranch
-      ?? (selectedPath ? worktrees.find((worktree) => worktree.path === selectedPath)?.branch : "main");
-    state.pendingBaseBranch = null;
-    const target = path.join(root, branchName);
+    const branchName = mode === "new-branch" || mode === "existing-remote" ? name : branch.name;
+    const target = path.join(root, name);
     state.worktreeOperationActive = true;
     worktreesPanel.beginCreating({ path: target, branch: branchName });
-    let branchExists = false;
     try {
-      try {
-        await execFileAsync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`], { cwd: root });
-        branchExists = true;
-      } catch {
-        branchExists = false;
-      }
-      const args = branchExists
-        ? ["worktree", "add", target, branchName]
-        : ["worktree", "add", "-b", branchName, target, base ?? "main"];
+      const args = mode === "new-branch"
+        ? ["worktree", "add", "-b", branchName, target, branch.ref]
+        : mode === "existing-local"
+        ? ["worktree", "add", target, branch.ref]
+        : mode === "existing-remote"
+        ? ["worktree", "add", "--track", "-b", branchName, target, branch.ref]
+        : ["worktree", "add", "--detach", target, detachedRef?.ref ?? branch.ref];
       await runLoggedGitCommand(args, root);
       await runPostCreateActions(target);
       worktreesPanel.clearOperation(target);
       await refreshWorktrees();
-      footerText.content = `Created ${branchName}`;
+      footerText.content = `Created ${name}`;
     } catch (error) {
       worktreesPanel.setOperation(target, "failed");
       setTimeout(() => worktreesPanel.removeOperation(target), 3000);
@@ -449,7 +515,11 @@ export async function runApp(): Promise<void> {
     }
   };
 
-  const deleteWorktrees = async (targets: Worktree[], deleteBranches: boolean): Promise<void> => {
+  const deleteWorktrees = async (
+    targets: Worktree[],
+    deleteBranches: boolean,
+    deleteRemotes: boolean,
+  ): Promise<void> => {
     const root = await bareRoot(cwd);
     state.worktreeOperationActive = true;
     for (const target of targets) {
@@ -462,6 +532,12 @@ export async function runApp(): Promise<void> {
           await runLoggedGitCommand(["worktree", "remove", "--force", targets[index].path], root);
           if (deleteBranches && targets[index].branch !== "(detached)") {
             await runLoggedGitCommand(["branch", "-D", targets[index].branch], root);
+          }
+          const remote = targets[index].remote;
+          if (deleteRemotes && remote && targets[index].branch !== "(detached)") {
+            const separator = remote.indexOf("/");
+            const remoteName = separator >= 0 ? remote.slice(0, separator) : remote;
+            await runLoggedGitCommand(["push", remoteName, "--delete", targets[index].branch], root);
           }
           worktreesPanel.clearOperation(targets[index].path);
           selectedWorktrees.delete(targets[index].path);
@@ -628,7 +704,23 @@ export async function runApp(): Promise<void> {
     }
     closePrompt();
     if (mode === "create") {
-      void createWorktree(value).catch((error: unknown) => {
+      const creationMode = state.pendingCreationMode;
+      const creationBranch = state.pendingCreationBranch;
+      const detachedRef = state.pendingDetachedRef;
+      state.pendingCreationMode = null;
+      state.pendingCreationBranch = null;
+      state.pendingDetachedRef = null;
+      state.pendingBaseBranch = null;
+      if (!creationMode || (!creationBranch && creationMode !== "detached-tag")) {
+        footerText.content = "No worktree creation mode is selected.";
+        return;
+      }
+      void createWorktree(
+        creationMode,
+        value,
+        creationBranch ?? { name: "tags", ref: "", remote: false },
+        detachedRef ?? undefined,
+      ).catch((error: unknown) => {
         footerText.content = `Unable to create worktree: ${String(error)}`;
       });
     } else if (mode === "delete") {
@@ -649,8 +741,38 @@ export async function runApp(): Promise<void> {
       }
       const deleteBranches = value.toLowerCase() === "y";
       const targets = state.pendingDeleteTargets;
+      const remoteTargets = targets.filter((target) => target.remote && target.branch !== "(detached)");
+      state.pendingDeleteBranches = deleteBranches;
+      if (remoteTargets.length > 0) {
+        promptPanel.height = Math.min(9 + remoteTargets.length, 70);
+        openPrompt(
+          "delete-remote",
+          `Delete related remote branches too? Type y or n:\n\n${worktreesPanel.formatTable(remoteTargets)}\n\n`,
+        );
+        return;
+      }
       state.pendingDeleteTargets = [];
-      void deleteWorktrees(targets, deleteBranches).catch((error: unknown) => {
+      void deleteWorktrees(targets, deleteBranches, false).catch((error: unknown) => {
+        footerText.content = `Unable to delete worktrees: ${String(error)}`;
+      });
+    } else if (mode === "delete-remote") {
+      if (value.toLowerCase() !== "y" && value.toLowerCase() !== "n") {
+        footerText.content = "Please type y or n to choose whether to delete related remote branches.";
+        const remoteTargets = state.pendingDeleteTargets.filter(
+          (target) => target.remote && target.branch !== "(detached)",
+        );
+        promptPanel.height = Math.min(9 + remoteTargets.length, 70);
+        openPrompt(
+          "delete-remote",
+          `Delete related remote branches too? Type y or n:\n\n${worktreesPanel.formatTable(remoteTargets)}\n\n`,
+        );
+        return;
+      }
+      const targets = state.pendingDeleteTargets;
+      const deleteBranches = state.pendingDeleteBranches;
+      state.pendingDeleteTargets = [];
+      state.pendingDeleteBranches = false;
+      void deleteWorktrees(targets, deleteBranches, value.toLowerCase() === "y").catch((error: unknown) => {
         footerText.content = `Unable to delete worktrees: ${String(error)}`;
       });
     }
@@ -746,11 +868,7 @@ export async function runApp(): Promise<void> {
       select.blur();
       void refreshWorktrees();
     } else if (action === "create-worktree") {
-      void getBranches(cwd).then((branches) => {
-        branchSelector.open(branches, appliedTheme);
-      }).catch((error: unknown) => {
-        footerText.content = `Unable to load branches: ${String(error)}`;
-      });
+      creationModeSelector.open(appliedTheme);
     } else if (action === "delete-worktrees") {
       const targets = worktrees.filter((worktree) => selectedWorktrees.has(worktree.path));
       if (targets.length === 0) {
@@ -785,6 +903,20 @@ export async function runApp(): Promise<void> {
       if (key.name === "escape") {
         key.preventDefault();
         branchSelector.close();
+      }
+      return;
+    }
+    if (detachedRefSelector.panel.visible) {
+      if (key.name === "escape") {
+        key.preventDefault();
+        detachedRefSelector.close();
+      }
+      return;
+    }
+    if (creationModeSelector.panel.visible) {
+      if (key.name === "escape") {
+        key.preventDefault();
+        creationModeSelector.close();
       }
       return;
     }

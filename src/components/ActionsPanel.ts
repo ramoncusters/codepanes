@@ -60,6 +60,7 @@ export class ActionsPanel {
     this.theme = {
       id: "initial",
       name: "Initial",
+      mode: "dark",
       background: backgroundColor,
       panelBackground: backgroundColor,
       inputBackground: backgroundColor,
@@ -150,12 +151,14 @@ export class ActionsPanel {
   focusActions(): void {
     this.outputFocused = false;
     this.selectedOutput().blur();
+    this.listPanel.borderColor = this.theme.accent;
     this.select.focus();
   }
 
   focusOutput(): void {
     this.outputFocused = true;
     this.select.blur();
+    this.listPanel.borderColor = this.theme.border;
     this.selectedOutput().focus();
   }
 
@@ -177,8 +180,11 @@ export class ActionsPanel {
     this.panel.backgroundColor = "transparent";
     this.listPanel.backgroundColor = theme.background;
     this.panel.borderColor = theme.border;
+    this.listPanel.borderColor = this.outputFocused ? theme.border : theme.accent;
+    this.listPanel.titleColor = theme.accent;
     this.output.applyTheme(theme);
     for (const output of this.outputs.values()) output.applyTheme(theme);
+    for (const row of this.rows) row.applyTheme(theme);
     this.updateOptions();
   }
 
@@ -291,23 +297,31 @@ export class ActionsPanel {
   }
 
   private renderRows(): void {
-    for (const row of this.rows) {
+    for (const [index, action] of this.actions.entries()) {
+      const status = this.statuses.get(index) ?? "idle";
+      const selected = index === this.select.getSelectedIndex();
+      const row = this.rows[index];
+      if (row) {
+        row.update(action.name, action.command, status, selected, this.pulse);
+      } else {
+        const newRow = new ActionRow(
+          this.renderer,
+          action.name,
+          action.command,
+          status,
+          selected,
+          this.pulse,
+          this.theme,
+        );
+        this.rows.push(newRow);
+        this.rowsPanel.add(newRow.panel);
+      }
+    }
+    while (this.rows.length > this.actions.length) {
+      const row = this.rows.pop();
+      if (!row) continue;
       this.rowsPanel.remove(row.panel);
       row.panel.destroy();
-    }
-    this.rows.length = 0;
-    for (const [index, action] of this.actions.entries()) {
-      const row = new ActionRow(
-        this.renderer,
-        action.name,
-        action.command,
-        this.statuses.get(index) ?? "idle",
-        index === this.select.getSelectedIndex(),
-        this.pulse,
-        this.theme,
-      );
-      this.rows.push(row);
-      this.rowsPanel.add(row.panel);
     }
   }
 

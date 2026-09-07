@@ -1,4 +1,4 @@
-import type { Worktree } from "../types.js";
+import type { BranchOption, DetachedRef, Worktree, WorktreeCreationMode } from "../types.js";
 
 import type { Theme } from "../services/themes.js";
 
@@ -6,6 +6,7 @@ export type PromptMode =
   | "create"
   | "delete"
   | "delete-branches"
+  | "delete-remote"
   | "apply-theme"
   | "switch-actions"
   | "select-base"
@@ -21,10 +22,14 @@ export type AppState = {
   configInstructionsActive: boolean;
   promptMode: PromptMode;
   pendingDeleteTargets: Worktree[];
+  pendingDeleteBranches: boolean;
   pendingTheme: Theme | null;
   worktreeOperationActive: boolean;
   pendingWorktreeSelection: { index: number; path: string } | null;
   pendingBaseBranch: string | null;
+  pendingCreationMode: WorktreeCreationMode | null;
+  pendingCreationBranch: BranchOption | null;
+  pendingDetachedRef: DetachedRef | null;
 };
 
 export function createAppState(): AppState {
@@ -38,9 +43,13 @@ export function createAppState(): AppState {
     configInstructionsActive: false,
     promptMode: null,
     pendingDeleteTargets: [],
+    pendingDeleteBranches: false,
     pendingTheme: null,
     worktreeOperationActive: false,
     pendingWorktreeSelection: null,
     pendingBaseBranch: null,
+    pendingCreationMode: null,
+    pendingCreationBranch: null,
+    pendingDetachedRef: null,
   };
 }

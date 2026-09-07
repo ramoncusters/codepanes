@@ -49,6 +49,7 @@ export class Footer {
     return {
       id: "initial",
       name: "Initial",
+      mode: "dark",
       background: "#111a33",
       panelBackground: "#111a33",
       inputBackground: "#111a33",

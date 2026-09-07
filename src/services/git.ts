@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { BranchOption, Worktree } from "../types.js";
+import type { BranchOption, DetachedRef, Worktree } from "../types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -60,8 +60,39 @@ export async function getBranches(cwd: string): Promise<BranchOption[]> {
     if (name.endsWith("/HEAD")) continue;
     branches.push({ name, ref: name, remote: ref.startsWith("refs/remotes/") });
   }
+
   return branches.sort((left, right) =>
     Number(left.remote) - Number(right.remote) || left.name.localeCompare(right.name));
+}
+
+export async function getCommitRefs(cwd: string, branch: string): Promise<DetachedRef[]> {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["log", "--date=short", "--format=%H%x09%h%x09%ad%x09%an%x09%s", "-n", "100", branch],
+    { cwd },
+  );
+  return stdout.split(/\r?\n/).filter(Boolean).map((line) => {
+    const [ref, short, date, author, ...subject] = line.split("\t");
+    return {
+      name: subject.join("\t"),
+      ref,
+      kind: "commit" as const,
+      description: `${short}  ${date}  ${author}`,
+    };
+  });
+}
+
+export async function getTagRefs(cwd: string): Promise<DetachedRef[]> {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["for-each-ref", "--sort=-creatordate", "--format=%(refname:short)", "refs/tags"],
+    { cwd },
+  );
+  return stdout.split(/\r?\n/).filter(Boolean).map((tag) => ({
+    name: tag,
+    ref: tag,
+    kind: "tag" as const,
+  }));
 }
 
 export async function gitRoot(cwd: string): Promise<string> {

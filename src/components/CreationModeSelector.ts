@@ -6,50 +6,57 @@ import {
   type CliRenderer,
 } from "@opentui/core";
 import type { Theme } from "../services/themes.js";
-import type { BranchOption } from "../types.js";
+import type { WorktreeCreationMode } from "../types.js";
 import { keyHintsWithBlankLine } from "./keyHints.js";
 
-export class BranchSelector {
+export class CreationModeSelector {
   readonly panel: BoxRenderable;
   readonly select: SelectRenderable;
   readonly hint: TextRenderable;
   readonly indicator: TextRenderable;
   private readonly renderer: CliRenderer;
-  private itemCount = 0;
   private readonly handleResize = (): void => {
     this.updateLayout();
   };
 
   constructor(
     renderer: CliRenderer,
-    private readonly onSelect: (branch: BranchOption) => void,
+    private readonly onSelect: (mode: WorktreeCreationMode) => void,
   ) {
     this.renderer = renderer;
     renderer.on("resize", this.handleResize);
     this.panel = new BoxRenderable(renderer, {
       position: "absolute",
       top: 0,
-      left: "20%",
-      width: "60%",
+      left: "25%",
+      width: "50%",
       height: 10,
       border: true,
       borderStyle: "rounded",
-      backgroundColor: "#111a33",
-      title: "base branch",
+      title: "create worktree",
       padding: 1,
       visible: false,
-      zIndex: 36,
+      zIndex: 34,
       flexDirection: "column",
     });
     this.select = new SelectRenderable(renderer, {
       flexGrow: 1,
       width: "100%",
-      options: [],
-      showDescription: true,
+      options: [
+        {
+          name: "  New branch from existing branch",
+          description: "",
+          value: "new-branch" as WorktreeCreationMode,
+        },
+        { name: "  Existing local branch", description: "", value: "existing-local" as WorktreeCreationMode },
+        { name: "  Existing remote branch", description: "", value: "existing-remote" as WorktreeCreationMode },
+        { name: "  Detached from commit", description: "", value: "detached-commit" as WorktreeCreationMode },
+        { name: "  Detached from tag", description: "", value: "detached-tag" as WorktreeCreationMode },
+      ],
+      showDescription: false,
       showSelectionIndicator: false,
-      itemSpacing: 1,
+      itemSpacing: 0,
       wrapSelection: true,
-      selectedBackgroundColor: "#18264a",
     });
     this.indicator = new TextRenderable(renderer, {
       position: "absolute",
@@ -59,6 +66,8 @@ export class BranchSelector {
       fg: "#7dd3fc",
       zIndex: 1,
     });
+    this.panel.add(this.select);
+    this.panel.add(this.indicator);
     this.hint = new TextRenderable(renderer, {
       content: keyHintsWithBlankLine({
         id: "initial",
@@ -75,27 +84,16 @@ export class BranchSelector {
       }, [["j/k", "choose"], ["Enter", "select"], ["Esc", "cancel"]]),
       fg: "#aab7d8",
     });
-    this.panel.add(this.select);
-    this.panel.add(this.indicator);
     this.panel.add(this.hint);
     this.select.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
-      const option = this.select.options[index]?.value as BranchOption | undefined;
-      if (option) this.onSelect(option);
+      const mode = this.select.options[index]?.value as WorktreeCreationMode | undefined;
+      if (mode) this.onSelect(mode);
     });
     this.select.on(SelectRenderableEvents.SELECTION_CHANGED, () => this.updateIndicator());
   }
 
-  open(branches: BranchOption[], theme: Theme): void {
-    this.itemCount = branches.length;
+  open(theme: Theme): void {
     this.updateLayout();
-    this.select.options = branches.map((branch) => ({
-      name: `  ${branch.remote ? `remote  ${branch.name}` : `local   ${branch.name}`}`,
-      description: `  ${branch.ref}`,
-      value: branch,
-    }));
-    const mainIndex = branches.findIndex((branch) => branch.name === "main" && !branch.remote);
-    this.select.setSelectedIndex(mainIndex >= 0 ? mainIndex : 0);
-    this.updateIndicator();
     this.applyTheme(theme);
     this.panel.visible = true;
     this.select.focus();
@@ -116,15 +114,14 @@ export class BranchSelector {
     this.select.textColor = theme.text;
     this.select.focusedTextColor = theme.text;
     this.select.selectedTextColor = theme.text;
-    this.select.descriptionColor = theme.muted;
-    this.select.selectedDescriptionColor = theme.text;
     this.hint.fg = theme.muted;
     this.hint.content = keyHintsWithBlankLine(theme, [["j/k", "choose"], ["Enter", "select"], ["Esc", "cancel"]]);
     this.indicator.fg = theme.accent;
+    this.updateIndicator();
   }
 
   private updateIndicator(): void {
-    this.indicator.top = 1 + this.select.getSelectedIndex() * 3;
+    this.indicator.top = 1 + this.select.getSelectedIndex();
   }
 
   private updateLayout(): void {
@@ -136,10 +133,10 @@ export class BranchSelector {
       this.panel.translateY = 0;
       return;
     }
-    this.panel.left = "20%";
-    this.panel.width = "60%";
-    const contentHeight = this.itemCount * 3 + 6;
-    const panelHeight = Math.min(contentHeight, Math.max(8, Math.floor(this.renderer.height * 0.9)));
+    this.panel.left = "25%";
+    this.panel.width = "50%";
+    const contentHeight = this.select.options.length + 6;
+    const panelHeight = Math.min(contentHeight, Math.max(8, Math.floor(this.renderer.height * 0.8)));
     this.panel.height = panelHeight;
     this.panel.top = Math.max(0, Math.floor((this.renderer.height - panelHeight) / 2));
     this.panel.translateY = 0;

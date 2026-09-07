@@ -6,10 +6,10 @@ import {
   type CliRenderer,
 } from "@opentui/core";
 import type { Theme } from "../services/themes.js";
-import type { BranchOption } from "../types.js";
+import type { DetachedRef } from "../types.js";
 import { keyHintsWithBlankLine } from "./keyHints.js";
 
-export class BranchSelector {
+export class DetachedRefSelector {
   readonly panel: BoxRenderable;
   readonly select: SelectRenderable;
   readonly hint: TextRenderable;
@@ -22,20 +22,19 @@ export class BranchSelector {
 
   constructor(
     renderer: CliRenderer,
-    private readonly onSelect: (branch: BranchOption) => void,
+    private readonly onSelect: (ref: DetachedRef) => void,
   ) {
     this.renderer = renderer;
     renderer.on("resize", this.handleResize);
     this.panel = new BoxRenderable(renderer, {
       position: "absolute",
       top: 0,
-      left: "20%",
-      width: "60%",
+      left: "5%",
+      width: "90%",
       height: 10,
       border: true,
       borderStyle: "rounded",
-      backgroundColor: "#111a33",
-      title: "base branch",
+      title: "detached reference",
       padding: 1,
       visible: false,
       zIndex: 36,
@@ -49,7 +48,6 @@ export class BranchSelector {
       showSelectionIndicator: false,
       itemSpacing: 1,
       wrapSelection: true,
-      selectedBackgroundColor: "#18264a",
     });
     this.indicator = new TextRenderable(renderer, {
       position: "absolute",
@@ -79,26 +77,25 @@ export class BranchSelector {
     this.panel.add(this.indicator);
     this.panel.add(this.hint);
     this.select.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
-      const option = this.select.options[index]?.value as BranchOption | undefined;
-      if (option) this.onSelect(option);
+      const ref = this.select.options[index]?.value as DetachedRef | undefined;
+      if (ref) this.onSelect(ref);
     });
     this.select.on(SelectRenderableEvents.SELECTION_CHANGED, () => this.updateIndicator());
   }
 
-  open(branches: BranchOption[], theme: Theme): void {
-    this.itemCount = branches.length;
+  open(refs: DetachedRef[], branchName: string, theme: Theme): void {
+    this.itemCount = refs.length;
     this.updateLayout();
-    this.select.options = branches.map((branch) => ({
-      name: `  ${branch.remote ? `remote  ${branch.name}` : `local   ${branch.name}`}`,
-      description: `  ${branch.ref}`,
-      value: branch,
+    this.panel.title = `detached reference: ${branchName}`;
+    this.select.options = refs.map((ref) => ({
+      name: `  ${ref.kind}  ${ref.name}`,
+      description: `  ${ref.description ?? ref.ref}`,
+      value: ref,
     }));
-    const mainIndex = branches.findIndex((branch) => branch.name === "main" && !branch.remote);
-    this.select.setSelectedIndex(mainIndex >= 0 ? mainIndex : 0);
-    this.updateIndicator();
     this.applyTheme(theme);
     this.panel.visible = true;
     this.select.focus();
+    this.updateIndicator();
   }
 
   close(): void {
@@ -136,8 +133,8 @@ export class BranchSelector {
       this.panel.translateY = 0;
       return;
     }
-    this.panel.left = "20%";
-    this.panel.width = "60%";
+    this.panel.left = "5%";
+    this.panel.width = "90%";
     const contentHeight = this.itemCount * 3 + 6;
     const panelHeight = Math.min(contentHeight, Math.max(8, Math.floor(this.renderer.height * 0.9)));
     this.panel.height = panelHeight;

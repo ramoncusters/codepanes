@@ -45,6 +45,7 @@ export class Prompt {
     this.input.backgroundColor = theme.inputBackground;
     this.input.focusedBackgroundColor = theme.focusedBackground;
     this.input.textColor = theme.text;
+    this.input.focusedTextColor = theme.text;
     this.inputSpacer.fg = theme.muted;
   }
 }

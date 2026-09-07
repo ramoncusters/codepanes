@@ -16,6 +16,7 @@ export class KeybindingsHelp {
       borderStyle: "rounded",
       borderColor: "#8be9fd",
       backgroundColor: "#111a33",
+      title: "keybindings",
       padding: 1,
       visible: false,
       zIndex: 20,
@@ -27,6 +28,7 @@ export class KeybindingsHelp {
   applyTheme(theme: Theme): void {
     this.panel.backgroundColor = theme.panelBackground;
     this.panel.borderColor = theme.accent;
+    this.panel.titleColor = theme.accent;
     this.text.fg = theme.text;
   }
 }

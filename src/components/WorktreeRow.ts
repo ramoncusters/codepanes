@@ -1,22 +1,18 @@
-import { BoxRenderable, TextRenderable, type CliRenderer } from "@opentui/core";
+import type { CliRenderer } from "@opentui/core";
 import path from "node:path";
 import type { Theme } from "../services/themes.js";
 import type { Worktree } from "../types.js";
+import { ListItemRow } from "./ListItemRow.js";
 
 export type WorktreeRowState = {
   cursorSelected: boolean;
-  selected: boolean;
+  marked: boolean;
   active: boolean;
 };
 
 export class WorktreeRow {
-  readonly panel: BoxRenderable;
-  private readonly cursor: TextRenderable;
-  private readonly indicator: TextRenderable;
-  private readonly name: TextRenderable;
-  private readonly branch: TextRenderable;
-  private readonly remote: TextRenderable;
-  private worktree: Worktree;
+  readonly panel;
+  private readonly row: ListItemRow;
   private theme: Theme;
 
   constructor(
@@ -26,43 +22,40 @@ export class WorktreeRow {
     theme: Theme,
   ) {
     this.theme = theme;
-    this.worktree = worktree;
-    this.panel = new BoxRenderable(renderer, { height: 3, width: "100%", flexDirection: "row" });
-    this.cursor = new TextRenderable(renderer, { width: 2 });
-    this.indicator = new TextRenderable(renderer, { width: 2 });
-    this.name = new TextRenderable(renderer, { content: "", flexGrow: 1 });
-    this.branch = new TextRenderable(renderer, { content: "", fg: theme.muted });
-    this.remote = new TextRenderable(renderer, { content: "", fg: theme.muted });
-    const details = new BoxRenderable(renderer, {
-      flexGrow: 1,
-      flexDirection: "column",
-    });
-    details.add(this.name);
-    details.add(this.branch);
-    details.add(this.remote);
-    this.panel.add(this.cursor);
-    this.panel.add(this.indicator);
-    this.panel.add(details);
-    this.update(worktree, state);
+    this.row = new ListItemRow(
+      renderer,
+      worktree.name ?? path.basename(worktree.path),
+      [`branch: ${worktree.branch}`, worktree.remote ? `remote: ${worktree.remote}` : "remote:"],
+      this.status(state),
+      state.cursorSelected,
+      theme,
+    );
+    this.panel = this.row.panel;
   }
 
   update(worktree: Worktree, state: WorktreeRowState): void {
-    this.worktree = worktree;
-    this.cursor.content = state.cursorSelected ? "› " : "  ";
-    this.indicator.content = `${state.selected ? "✓" : state.active ? "●" : " "} `;
-    this.name.content = worktree.name ?? path.basename(worktree.path);
-    this.branch.content = `branch: ${worktree.branch}`;
-    this.remote.content = worktree.remote ? `remote: ${worktree.remote}` : "remote:";
-    this.panel.backgroundColor = state.cursorSelected ? this.theme.focusedBackground : "transparent";
-    this.cursor.fg = this.theme.accent;
-    this.indicator.fg = this.theme.success ?? this.theme.accent;
-    this.name.fg = this.theme.accent;
-    this.branch.fg = this.theme.muted;
-    this.remote.fg = this.theme.muted;
+    this.row.update(
+      worktree.name ?? path.basename(worktree.path),
+      [`branch: ${worktree.branch}`, worktree.remote ? `remote: ${worktree.remote}` : "remote:"],
+      this.status(state),
+      state.cursorSelected,
+    );
   }
 
   applyTheme(theme: Theme): void {
     this.theme = theme;
+    this.row.applyTheme(theme);
   }
 
+  private status(state: WorktreeRowState): { text: string; color: string }[] {
+    return [{
+      text: state.marked ? "✓ selected" : "",
+      color: this.theme.accent,
+    }, {
+      text: state.active ? "● active" : "",
+      color: this.theme.success ?? this.theme.accent,
+    },
+    { text: "", color: this.theme.muted },
+    ];
+  }
 }

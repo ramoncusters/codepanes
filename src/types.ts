@@ -1,5 +1,12 @@
 export type Worktree = { path: string; branch: string; name?: string; remote?: string };
 export type BranchOption = { name: string; ref: string; remote: boolean };
+export type DetachedRef = { name: string; ref: string; kind: "tag" | "commit"; description?: string };
+export type WorktreeCreationMode =
+  | "new-branch"
+  | "existing-local"
+  | "existing-remote"
+  | "detached-commit"
+  | "detached-tag";
 export type TabName = "Worktrees" | "Lazygit" | "Actions" | "Global";
 export type CommandTarget = "embedded" | "external" | "external-terminal";
 export type Keybinding = {

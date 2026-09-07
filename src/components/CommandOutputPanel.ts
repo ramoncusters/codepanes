@@ -13,6 +13,8 @@ export class CommandOutputPanel {
   readonly terminal: EmbeddedTerminalRenderable;
   private pendingIconSequence = "";
   private pendingModeSequence = "";
+  private theme: Theme;
+  private focused = false;
 
   constructor(renderer: CliRenderer, backgroundColor: string) {
     this.panel = new BoxRenderable(renderer, {
@@ -25,6 +27,19 @@ export class CommandOutputPanel {
       titleColor: "#7dd3fc",
       backgroundColor,
     });
+    this.theme = {
+      id: "initial",
+      name: "Initial",
+      mode: "dark",
+      background: backgroundColor,
+      panelBackground: backgroundColor,
+      inputBackground: backgroundColor,
+      focusedBackground: backgroundColor,
+      border: "#2b3c68",
+      accent: "#7dd3fc",
+      text: "#ffffff",
+      muted: "#aab7d8",
+    };
     this.terminal = new EmbeddedTerminalRenderable(renderer, {
       width: "100%",
       height: "100%",
@@ -66,16 +81,21 @@ export class CommandOutputPanel {
   }
 
   applyTheme(theme: Theme): void {
+    this.theme = theme;
     this.panel.backgroundColor = theme.background;
-    this.panel.borderColor = theme.border;
+    this.panel.borderColor = this.focused ? theme.accent : theme.border;
     this.panel.titleColor = theme.accent;
   }
 
   focus(): void {
+    this.focused = true;
+    this.panel.borderColor = this.theme.accent;
     this.terminal.focus();
   }
 
   blur(): void {
+    this.focused = false;
+    this.panel.borderColor = this.theme.border;
     this.terminal.blur();
   }
 
@@ -89,7 +109,7 @@ export class CommandOutputPanel {
       modifiers: { shift: false, alt: false, ctrl: false },
       scroll: { direction, delta: Math.abs(lines) },
     });
-    this.terminal.onMouseScroll?.(event);
+    this.terminal.processMouseEvent(event);
   }
 
   private filterIconSequence(data: string): { output: string; pending: string } {

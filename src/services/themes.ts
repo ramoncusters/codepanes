@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 export type Theme = {
   id: string;
   name: string;
+  mode: "dark" | "light";
   background: string;
   panelBackground: string;
   inputBackground: string;
@@ -33,6 +34,17 @@ const themeFields: (keyof Theme)[] = [
   "muted",
 ];
 
+function inferThemeMode(background: string, filePath: string): "dark" | "light" {
+  const match = /^#([0-9a-f]{6})$/i.exec(background);
+  if (!match) throw new Error(`Invalid theme file: ${filePath}`);
+  const value = Number.parseInt(match[1], 16);
+  const red = (value >> 16) & 0xff;
+  const green = (value >> 8) & 0xff;
+  const blue = value & 0xff;
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+  return luminance >= 0.5 ? "light" : "dark";
+}
+
 function parseTheme(value: unknown, filePath: string): Theme {
   if (typeof value !== "object" || value === null) {
     throw new Error(`Invalid theme file: ${filePath}`);
@@ -41,7 +53,13 @@ function parseTheme(value: unknown, filePath: string): Theme {
   if (themeFields.some((field) => typeof record[field] !== "string")) {
     throw new Error(`Invalid theme file: ${filePath}`);
   }
-  return record as Theme;
+  if (record.mode !== undefined && record.mode !== "dark" && record.mode !== "light") {
+    throw new Error(`Invalid theme mode in theme file: ${filePath}`);
+  }
+  return {
+    ...record,
+    mode: (record.mode as "dark" | "light" | undefined) ?? inferThemeMode(record.background as string, filePath),
+  } as Theme;
 }
 
 export async function loadThemes(): Promise<Theme[]> {

@@ -71,6 +71,7 @@ export class WorktreesPanel {
     this.theme = {
       id: "initial",
       name: "Initial",
+      mode: "dark",
       background: backgroundColor,
       panelBackground: backgroundColor,
       inputBackground: backgroundColor,
@@ -138,7 +139,6 @@ export class WorktreesPanel {
     this.rowsPanel = new BoxRenderable(renderer, {
       flexGrow: 1,
       flexDirection: "column",
-      paddingTop: 1,
       gap: 1,
     });
     this.listPanel.add(this.rowsPanel);
@@ -279,6 +279,7 @@ export class WorktreesPanel {
     this.listPanel.backgroundColor = theme.background;
     this.listPanel.borderColor = theme.border;
     this.listPanel.titleColor = theme.accent;
+    for (const row of this.rows) row.applyTheme(theme);
     this.searchBar.backgroundColor = theme.panelBackground;
     this.select.backgroundColor = theme.panelBackground;
     this.select.focusedBackgroundColor = theme.focusedBackground;
@@ -296,6 +297,8 @@ export class WorktreesPanel {
     this.operationHint.content = keyHints(theme, [["x", "clear operations"]]);
     this.searchInput.backgroundColor = theme.inputBackground;
     this.searchInput.focusedBackgroundColor = theme.focusedBackground;
+    this.searchInput.textColor = theme.text;
+    this.searchInput.focusedTextColor = theme.text;
     this.output.applyTheme(theme);
     this.updateOptions();
   }
@@ -307,12 +310,14 @@ export class WorktreesPanel {
   focusOverview(): void {
     this.outputFocused = false;
     this.output.blur();
+    this.listPanel.borderColor = this.theme.accent;
     this.select.focus();
   }
 
   focusOutput(): void {
     this.outputFocused = true;
     this.select.blur();
+    this.listPanel.borderColor = this.theme.border;
     this.output.focus();
   }
 
@@ -338,19 +343,26 @@ export class WorktreesPanel {
     this.updatingOptions = true;
     try {
       this.select.options = options;
-      for (const row of this.rows) {
+      for (const [index, worktree] of filtered.entries()) {
+        const state = {
+          cursorSelected: index === this.select.getSelectedIndex(),
+          marked: this.selectedWorktrees.has(worktree.path),
+          active: worktree.path === this.activeWorktreePath,
+        };
+        const row = this.rows[index];
+        if (row) {
+          row.update(worktree, state);
+        } else {
+          const newRow = new WorktreeRow(this.renderer, worktree, state, this.theme);
+          this.rows.push(newRow);
+          this.rowsPanel.add(newRow.panel);
+        }
+      }
+      while (this.rows.length > filtered.length) {
+        const row = this.rows.pop();
+        if (!row) continue;
         this.rowsPanel.remove(row.panel);
         row.panel.destroy();
-      }
-      this.rows.length = 0;
-      for (const [index, worktree] of filtered.entries()) {
-        const row = new WorktreeRow(this.renderer, worktree, {
-          cursorSelected: index === this.select.getSelectedIndex(),
-          selected: this.selectedWorktrees.has(worktree.path),
-          active: worktree.path === this.activeWorktreePath,
-        }, this.theme);
-        this.rows.push(row);
-        this.rowsPanel.add(row.panel);
       }
       this.renderOperations();
       this.handleResize(this.renderer.width);
@@ -367,12 +379,7 @@ export class WorktreesPanel {
   }
 
   private renderOperations(): void {
-    for (const row of this.operationRows) {
-      this.operationRowsPanel.remove(row);
-      row.destroy();
-    }
-    this.operationRows.length = 0;
-    for (const record of this.operationRecords.values()) {
+    for (const [index, record] of Array.from(this.operationRecords.values()).entries()) {
       const verb = record.kind === "create" ? "creating new worktree" : "deleting worktree";
       const prefix = record.status === "active"
         ? spinnerFrames[this.spinnerFrame]
@@ -384,9 +391,21 @@ export class WorktreesPanel {
         : record.status === "completed"
           ? `${prefix} successfully ${record.kind === "create" ? "created" : "deleted"} ${record.name}`
           : `${prefix} ${verb} ${record.name}`;
-      const row = new TextRenderable(this.renderer, { content: text, fg: this.theme.text });
-      this.operationRows.push(row);
-      this.operationRowsPanel.add(row);
+      const row = this.operationRows[index];
+      if (row) {
+          row.content = text;
+          row.fg = this.theme.text;
+      } else {
+          const newRow = new TextRenderable(this.renderer, { content: text, fg: this.theme.text });
+          this.operationRows.push(newRow);
+          this.operationRowsPanel.add(newRow);
+      }
+    }
+    while (this.operationRows.length > this.operationRecords.size) {
+      const row = this.operationRows.pop();
+      if (!row) continue;
+      this.operationRowsPanel.remove(row);
+      row.destroy();
     }
     this.operationsPanel.visible = this.operationRecords.size > 0;
     this.operationsPanel.height = this.operationRecords.size > 0 ? this.operationRecords.size + 6 : 1;
