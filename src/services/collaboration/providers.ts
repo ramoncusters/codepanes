@@ -141,6 +141,7 @@ type GitHubPullRequest = {
   updated_at: string;
   html_url: string;
   created_at: string;
+  repository?: { full_name?: string };
   additions?: number;
   deletions?: number;
   changed_files?: number;
@@ -220,7 +221,11 @@ export class GitHubProvider extends CliProvider {
       `repos/${this.owner}/${this.repository}/pulls?${params}`,
     ]);
     return {
-      items: items.map((pullRequest) => this.mapPullRequest(pullRequest)),
+      items: items
+        .filter((pullRequest) =>
+          !pullRequest.repository?.full_name
+          || pullRequest.repository.full_name.toLowerCase() === `${this.owner}/${this.repository}`.toLowerCase())
+        .map((pullRequest) => this.mapPullRequest(pullRequest)),
       hasNextPage: items.length === 30,
       nextCursor: String(page + 1),
     };
@@ -536,6 +541,7 @@ type AzurePullRequest = {
   creationDate: string;
   closedDate?: string;
   url: string;
+  repository?: { name?: string };
 };
 
 type AzureThreadComment = {
@@ -635,7 +641,11 @@ export class AzureProvider extends CliProvider {
       "json",
     ]);
     return {
-      items: items.map((pullRequest) => this.mapPullRequest(pullRequest)),
+      items: items
+        .filter((pullRequest) =>
+          !pullRequest.repository?.name
+          || pullRequest.repository.name.toLowerCase() === this.repository.toLowerCase())
+        .map((pullRequest) => this.mapPullRequest(pullRequest)),
       hasNextPage: items.length === 30,
       nextCursor: String(page + 1),
     };

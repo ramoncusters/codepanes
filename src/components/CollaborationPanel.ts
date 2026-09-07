@@ -27,6 +27,10 @@ const resources = [
   { name: "Issues / Work items", description: "Tracked work and discussions" },
 ];
 type DiffMode = "summary" | "inline" | "side-by-side";
+type PullRequestGroupStatus = "open" | "draft" | "merged" | "closed";
+type PullRequestGroupOption =
+  | { kind: "group"; status: PullRequestGroupStatus }
+  | PullRequest;
 
 export type CollaborationPromptRequest =
   | { kind: "comment"; pullRequest: PullRequest; commentType: "file" | "line" }
@@ -96,6 +100,12 @@ export class CollaborationPanel {
   private selectedComment: PullRequestComment | undefined;
   private comments: PullRequestComment[] = [];
   private selectedResourceIndex = 0;
+  private pullRequests: PullRequest[] = [];
+  private readonly collapsedPullRequestGroups = new Set<PullRequestGroupStatus>([
+    "draft",
+    "merged",
+    "closed",
+  ]);
   private focusedSection:
     | "resources"
     | "pull-requests"
@@ -262,8 +272,18 @@ export class CollaborationPanel {
       if (resource) void this.showResource(resource.name, index);
     });
     this.pullRequestSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
-      const pullRequest = this.pullRequestSelect.options[index]?.value as PullRequest | undefined;
-      if (pullRequest) void this.showPullRequest(pullRequest);
+      const option = this.pullRequestSelect.options[index]?.value as PullRequestGroupOption | undefined;
+      if (!option) return;
+      if ("kind" in option && option.kind === "group") {
+        if (this.collapsedPullRequestGroups.has(option.status)) {
+          this.collapsedPullRequestGroups.delete(option.status);
+        } else {
+          this.collapsedPullRequestGroups.add(option.status);
+        }
+        this.renderPullRequestGroups();
+        return;
+      }
+      void this.showPullRequest(option as PullRequest);
     });
     this.pipelineSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       const pipeline = this.pipelineSelect.options[index]?.value as Pipeline | undefined;
@@ -580,11 +600,8 @@ export class CollaborationPanel {
     this.detailText.content = "Loading pull requests...";
     try {
       const page = await this.provider.listPullRequests({});
-      this.pullRequestSelect.options = page.items.map((pullRequest) => ({
-        name: `#${pullRequest.number}  ${pullRequest.title}`,
-        description: `${pullRequest.status}  ${pullRequest.sourceBranch} → ${pullRequest.targetBranch}`,
-        value: pullRequest,
-      }));
+      this.pullRequests = page.items;
+      this.renderPullRequestGroups();
       this.pullRequestSelect.visible = true;
       this.detailText.content = page.items.length > 0
         ? "Select a pull request to view its details."
@@ -595,6 +612,31 @@ export class CollaborationPanel {
         : `Unable to load pull requests: ${String(error)}`;
       if (isAuthenticationError(error)) this.onAuthenticationRequired(this.provider.id);
     }
+  }
+
+  private renderPullRequestGroups(): void {
+      const groups: PullRequestGroupStatus[] = ["open", "draft", "merged", "closed"];
+      this.pullRequestSelect.options = groups.flatMap((status) => {
+        const pullRequests = this.pullRequests
+          .filter((pullRequest) => pullRequest.status === status)
+          .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+        if (pullRequests.length === 0) return [];
+        const collapsed = this.collapsedPullRequestGroups.has(status);
+        const label = status[0].toUpperCase() + status.slice(1);
+        const options: Array<{ name: string; description: string; value: PullRequestGroupOption }> = [{
+          name: `${collapsed ? "▶" : "▼"} ${label} (${pullRequests.length})`,
+          description: "",
+          value: { kind: "group", status },
+        }];
+        if (!collapsed) {
+          options.push(...pullRequests.map((pullRequest) => ({
+            name: `  #${pullRequest.number}  ${pullRequest.title}`,
+            description: `  ${pullRequest.sourceBranch} → ${pullRequest.targetBranch}`,
+            value: pullRequest,
+          })));
+        }
+        return options;
+      });
   }
 
   private async showPullRequest(pullRequest: PullRequest): Promise<void> {
