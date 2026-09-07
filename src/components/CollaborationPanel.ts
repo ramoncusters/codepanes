@@ -9,6 +9,9 @@ import type { Theme } from "../services/themes.js";
 import type {
   CollaborationProvider,
   PullRequest,
+  PullRequestAction,
+  PullRequestComment,
+  PullRequestCommentInput,
   PullRequestDetails,
   PullRequestDiff,
 } from "../services/collaboration/types.js";
@@ -19,6 +22,11 @@ const resources = [
   { name: "Issues / Work items", description: "Tracked work and discussions" },
 ];
 type DiffMode = "summary" | "inline" | "side-by-side";
+
+export type CollaborationPromptRequest =
+  | { kind: "comment"; pullRequest: PullRequest; commentType: "file" | "line" }
+  | { kind: "action"; pullRequest: PullRequest; action: PullRequestAction }
+  | { kind: "resolve-comment"; pullRequest: PullRequest; comment: PullRequestComment };
 
 function renderDiff(diff: PullRequestDiff, mode: DiffMode): string {
   if (mode === "summary") {
@@ -60,6 +68,8 @@ export class CollaborationPanel {
   readonly resourceSelect: SelectRenderable;
   private readonly pullRequestSelect: SelectRenderable;
   private readonly diffModeSelect: SelectRenderable;
+  private readonly commentSelect: SelectRenderable;
+  private readonly actionSelect: SelectRenderable;
   private readonly listPanel: BoxRenderable;
   private readonly detailPanel: BoxRenderable;
   private readonly detailTitle: TextRenderable;
@@ -69,8 +79,13 @@ export class CollaborationPanel {
   private theme: Theme;
   private readonly provider: CollaborationProvider | undefined;
   private selectedPullRequest: PullRequest | undefined;
+  private selectedPullRequestDetails: PullRequestDetails | undefined;
+  private selectedComment: PullRequestComment | undefined;
+  private comments: PullRequestComment[] = [];
   private selectedResourceIndex = 0;
+  private focusedSection: "resources" | "pull-requests" | "comments" | "actions" = "resources";
   private readonly onAuthenticationRequired: (provider: "github" | "azure") => void;
+  private readonly onPromptRequested: (request: CollaborationPromptRequest) => void;
   private readonly handleResize = (): void => {
     const compact = this.renderer.width < 100;
     this.panel.flexDirection = compact ? "column" : "row";
@@ -85,10 +100,12 @@ export class CollaborationPanel {
     backgroundColor: string,
     provider?: CollaborationProvider,
     onAuthenticationRequired: (provider: "github" | "azure") => void = () => {},
+    onPromptRequested: (request: CollaborationPromptRequest) => void = () => {},
   ) {
     this.renderer = renderer;
     this.provider = provider;
     this.onAuthenticationRequired = onAuthenticationRequired;
+    this.onPromptRequested = onPromptRequested;
     this.theme = {
       id: "initial",
       name: "Initial",
@@ -164,10 +181,28 @@ export class CollaborationPanel {
       ],
       showDescription: false,
     });
+    this.commentSelect = new SelectRenderable(renderer, {
+      width: "100%",
+      height: 7,
+      visible: false,
+      options: [],
+      showDescription: true,
+      itemSpacing: 1,
+    });
+    this.actionSelect = new SelectRenderable(renderer, {
+      width: "100%",
+      height: 6,
+      visible: false,
+      options: [],
+      showDescription: true,
+      itemSpacing: 1,
+    });
     this.diffText = new TextRenderable(renderer, { visible: false, content: "" });
     this.detailPanel.add(this.detailTitle);
     this.detailPanel.add(this.pullRequestSelect);
     this.detailPanel.add(this.detailText);
+    this.detailPanel.add(this.commentSelect);
+    this.detailPanel.add(this.actionSelect);
     this.detailPanel.add(this.diffModeSelect);
     this.detailPanel.add(this.diffText);
     this.listPanel.add(this.resourceSelect);
@@ -185,17 +220,126 @@ export class CollaborationPanel {
       const mode = this.diffModeSelect.options[index]?.value as DiffMode | undefined;
       if (mode && this.selectedPullRequest) void this.showDiff(this.selectedPullRequest, mode);
     });
+    this.commentSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
+      this.selectedComment = this.comments[index];
+      if (this.selectedComment) {
+        this.detailText.content = this.renderPullRequestSummary(
+          this.selectedPullRequestDetails,
+          `Selected comment: ${this.selectedComment.body}`,
+        );
+        this.updateActionOptions();
+      }
+    });
+    this.actionSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
+      const action = this.actionSelect.options[index]?.value as
+        | PullRequestAction
+        | "file-comment"
+        | "line-comment"
+        | "resolve-comment"
+        | "refresh-comments"
+        | undefined;
+      if (!action || !this.selectedPullRequest) return;
+      if (action === "file-comment" || action === "line-comment") {
+        this.onPromptRequested({
+          kind: "comment",
+          pullRequest: this.selectedPullRequest,
+          commentType: action === "file-comment" ? "file" : "line",
+        });
+      } else if (action === "refresh-comments") {
+        void this.loadComments(this.selectedPullRequest);
+      } else if (action === "resolve-comment" && this.selectedComment) {
+        this.onPromptRequested({
+          kind: "resolve-comment",
+          pullRequest: this.selectedPullRequest,
+          comment: this.selectedComment,
+        });
+      } else if (action === "resolve-comment") {
+        return;
+      } else {
+        this.onPromptRequested({
+          kind: "action",
+          pullRequest: this.selectedPullRequest,
+          action,
+        });
+      }
+    });
     renderer.on("resize", this.handleResize);
     this.handleResize();
     this.applyTheme(this.theme);
   }
 
   focusResource(): void {
+    this.focusedSection = "resources";
     this.resourceSelect.focus();
+  }
+
+  focusNext(): void {
+    if (this.focusedSection === "resources" && this.pullRequestSelect.visible) {
+      this.focusedSection = "pull-requests";
+      this.pullRequestSelect.focus();
+    } else if (this.focusedSection === "pull-requests" && this.commentSelect.visible) {
+      this.focusedSection = "comments";
+      this.commentSelect.focus();
+    } else if (
+      (this.focusedSection === "pull-requests" || this.focusedSection === "comments")
+      && this.actionSelect.visible
+    ) {
+      this.focusedSection = "actions";
+      this.actionSelect.focus();
+    } else {
+      this.focusResource();
+    }
+  }
+
+  focusPrevious(): void {
+    if (this.focusedSection === "actions" && this.commentSelect.visible) {
+      this.focusedSection = "comments";
+      this.commentSelect.focus();
+    } else if (
+      (this.focusedSection === "actions" || this.focusedSection === "comments")
+      && this.pullRequestSelect.visible
+    ) {
+      this.focusedSection = "pull-requests";
+      this.pullRequestSelect.focus();
+    } else if (this.focusedSection === "pull-requests") {
+      this.focusResource();
+    } else {
+      this.focusResource();
+    }
   }
 
   retryCurrentResource(): void {
     void this.showResource(resources[this.selectedResourceIndex]?.name ?? "Pull requests", this.selectedResourceIndex);
+  }
+
+  async createPullRequestComment(comment: PullRequestCommentInput): Promise<void> {
+    if (!this.provider || !this.selectedPullRequest) return;
+    await this.provider.createPullRequestComment(this.selectedPullRequest.id, comment);
+    await this.loadComments(this.selectedPullRequest);
+  }
+
+  async updateSelectedCommentStatus(): Promise<void> {
+    if (!this.provider || !this.selectedPullRequest || !this.selectedComment) return;
+    await this.provider.updatePullRequestCommentStatus(
+      this.selectedPullRequest.id,
+      this.selectedComment.threadId ?? this.selectedComment.id,
+      "resolved",
+    );
+    await this.loadComments(this.selectedPullRequest);
+  }
+
+  async executePullRequestAction(action: PullRequestAction): Promise<void> {
+    if (!this.provider || !this.selectedPullRequest) return;
+    const id = this.selectedPullRequest.id;
+    const details = action === "merge"
+      ? await this.provider.mergePullRequest(id)
+      : action === "complete"
+        ? await this.provider.completePullRequest(id)
+        : await this.provider.abandonPullRequest(id);
+    this.selectedPullRequest = details;
+    this.selectedPullRequestDetails = details;
+    this.detailText.content = this.renderPullRequestSummary(details);
+    this.updateActionOptions();
   }
 
   applyTheme(theme: Theme): void {
@@ -229,6 +373,16 @@ export class CollaborationPanel {
     this.diffModeSelect.textColor = theme.text;
     this.diffModeSelect.focusedTextColor = theme.text;
     this.diffModeSelect.selectedTextColor = theme.text;
+    for (const select of [this.commentSelect, this.actionSelect]) {
+      select.backgroundColor = theme.panelBackground;
+      select.focusedBackgroundColor = theme.focusedBackground;
+      select.selectedBackgroundColor = theme.focusedBackground;
+      select.textColor = theme.text;
+      select.focusedTextColor = theme.text;
+      select.selectedTextColor = theme.text;
+      select.descriptionColor = theme.muted;
+      select.selectedDescriptionColor = theme.text;
+    }
     this.detailTitle.fg = theme.accent;
     this.detailText.fg = theme.muted;
   }
@@ -237,9 +391,15 @@ export class CollaborationPanel {
     this.selectedResourceIndex = index;
     this.detailTitle.content = name;
     this.pullRequestSelect.visible = false;
+    this.commentSelect.visible = false;
+    this.actionSelect.visible = false;
     this.diffModeSelect.visible = false;
     this.diffText.visible = false;
     this.detailText.visible = true;
+    this.selectedPullRequest = undefined;
+    this.selectedPullRequestDetails = undefined;
+    this.selectedComment = undefined;
+    this.comments = [];
     if (index !== 0) {
       this.detailText.content = this.provider
         ? "This resource is planned for a later implementation step."
@@ -271,16 +431,14 @@ export class CollaborationPanel {
   private async showPullRequest(pullRequest: PullRequest): Promise<void> {
     if (!this.provider) return;
     this.selectedPullRequest = pullRequest;
+    this.selectedComment = undefined;
     this.detailText.content = "Loading pull request details...";
     try {
       const details: PullRequestDetails = await this.provider.getPullRequest(pullRequest.id);
-      this.detailText.content = [
-        `#${details.number} ${details.title}`,
-        `${details.status} · ${details.author}`,
-        `${details.sourceBranch} → ${details.targetBranch}`,
-        `${details.additions} additions · ${details.deletions} deletions · ${details.changedFiles} files`,
-        details.description ?? "No description.",
-      ].join("\n");
+      this.selectedPullRequestDetails = details;
+      this.detailText.content = this.renderPullRequestSummary(details);
+      this.updateActionOptions();
+      await this.loadComments(pullRequest);
       this.diffModeSelect.visible = true;
       this.diffText.visible = true;
       await this.showDiff(pullRequest, "summary");
@@ -299,5 +457,80 @@ export class CollaborationPanel {
     } catch (error) {
       this.diffText.content = `Unable to load diff: ${String(error)}`;
     }
+  }
+
+  private async loadComments(pullRequest: PullRequest): Promise<void> {
+    if (!this.provider) return;
+    try {
+      const selectedCommentId = this.selectedComment?.id;
+      const page = await this.provider.listPullRequestComments(pullRequest.id);
+      this.comments = page.items;
+      this.selectedComment = this.comments.find((comment) => comment.id === selectedCommentId);
+      this.commentSelect.options = this.comments.map((comment) => ({
+        name: `${comment.filePath ?? "General comment"}${comment.line === undefined ? "" : `:${comment.line}`}`,
+        description: `${comment.status} · ${comment.author}: ${comment.body}`,
+        value: comment,
+      }));
+      this.commentSelect.visible = this.comments.length > 0;
+      this.updateActionOptions();
+    } catch (error) {
+      this.comments = [];
+      this.commentSelect.options = [];
+      this.commentSelect.visible = false;
+      this.detailText.content = `${this.renderPullRequestSummary(this.selectedPullRequestDetails)}\n\nUnable to load comments: ${String(error)}`;
+    }
+  }
+
+  private updateActionOptions(): void {
+    const details = this.selectedPullRequestDetails;
+    if (!details) {
+      this.actionSelect.options = [];
+      this.actionSelect.visible = false;
+      return;
+    }
+    const options: Array<{
+      name: string;
+      description: string;
+      value: PullRequestAction | "file-comment" | "line-comment" | "resolve-comment" | "refresh-comments";
+    }> = details.capabilities.canComment
+      ? [
+        { name: "Add file comment", description: "path | comment", value: "file-comment" },
+        { name: "Add line comment", description: "path:line | comment", value: "line-comment" },
+        { name: "Refresh comments", description: "Reload review comments", value: "refresh-comments" },
+      ]
+      : [];
+    if (details.capabilities.canChangeCommentStatus && this.selectedComment?.status === "active") {
+      options.push({
+        name: "Resolve selected comment",
+        description: "Mark the selected comment as resolved",
+        value: "resolve-comment",
+      });
+    }
+    if (details.capabilities.canMerge) {
+      options.push({ name: "Merge pull request", description: "Merge with the provider default", value: "merge" });
+    }
+    if (details.capabilities.canComplete) {
+      options.push({ name: "Complete pull request", description: "Complete the pull request", value: "complete" });
+    }
+    if (details.capabilities.canAbandon) {
+      options.push({ name: "Abandon pull request", description: "Close or abandon the pull request", value: "abandon" });
+    }
+    this.actionSelect.options = options;
+    this.actionSelect.visible = true;
+  }
+
+  private renderPullRequestSummary(
+    details: PullRequestDetails | undefined,
+    suffix?: string,
+  ): string {
+    if (!details) return suffix ?? "No pull request selected.";
+    return [
+      `#${details.number} ${details.title}`,
+      `${details.status} · ${details.author}`,
+      `${details.sourceBranch} → ${details.targetBranch}`,
+      `${details.additions} additions · ${details.deletions} deletions · ${details.changedFiles} files`,
+      details.description ?? "No description.",
+      ...(suffix ? ["", suffix] : []),
+    ].join("\n");
   }
 }

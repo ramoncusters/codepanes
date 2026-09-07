@@ -27,13 +27,14 @@ import { Footer } from "../components/Footer.js";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.js";
 import { keyBindingsHelp, keyHints } from "../components/keyHints.js";
 import { ActionsPanel } from "../components/ActionsPanel.js";
-import { CollaborationPanel } from "../components/CollaborationPanel.js";
+import { CollaborationPanel, type CollaborationPromptRequest } from "../components/CollaborationPanel.js";
 import { BranchSelector } from "../components/BranchSelector.js";
 import { CreationModeSelector } from "../components/CreationModeSelector.js";
 import { DetachedRefSelector } from "../components/DetachedRefSelector.js";
 import { expandWorktreeCommand, runAuthenticationCommand, runExternalCommand, runInteractiveCommand } from "../services/commands.js";
 import { getTheme, loadThemes, type Theme } from "../services/themes.js";
 import type { Action, BranchOption, DetachedRef, TabName, Worktree, WorktreeCreationMode } from "../types.js";
+import type { PullRequestCommentInput } from "../services/collaboration/types.js";
 import type { IPty } from "node-pty";
 import { createKeybindingResolver, ensureDefaultKeybindings } from "./keybindings.js";
 import { createAppState } from "./state.js";
@@ -128,11 +129,23 @@ export async function runApp(): Promise<void> {
     commandShell,
     terminalBackground,
   );
+  let pendingCollaborationPrompt: CollaborationPromptRequest | null = null;
   const collaborationPanel = new CollaborationPanel(
     renderer,
     terminalBackground,
     collaborationProvider,
     (provider) => openAuthenticationPrompt(provider),
+    (request) => {
+      pendingCollaborationPrompt = request;
+      if (request.kind === "comment") {
+        const format = request.commentType === "line" ? "path:line | comment" : "path | comment";
+        openPrompt("collaboration-comment", `Add ${request.commentType} comment (${format}):`);
+      } else if (request.kind === "resolve-comment") {
+        openPrompt("collaboration-action", "Resolve this comment? Type y or n:");
+      } else {
+        openPrompt("collaboration-action", `${request.action} this pull request? Type y or n:`);
+      }
+    },
   );
   const worktreePanel = worktreesPanel.panel;
   const select = worktreesPanel.select;
@@ -353,7 +366,15 @@ export async function runApp(): Promise<void> {
   };
 
   const openPrompt = (
-    mode: "create" | "delete" | "delete-branches" | "delete-remote" | "authenticate" | "switch-actions",
+    mode:
+      | "create"
+      | "delete"
+      | "delete-branches"
+      | "delete-remote"
+      | "authenticate"
+      | "switch-actions"
+      | "collaboration-comment"
+      | "collaboration-action",
     label: string,
   ): void => {
     if (mode === "create") promptPanel.height = 7;
@@ -623,7 +644,9 @@ export async function runApp(): Promise<void> {
       terminal.blur();
       if (!state.keybindingsActive && !state.configEditorActive) collaborationPanel.focusResource();
       footerText.content = keyHints(appliedTheme, [
-        ["j/k", "choose resource"],
+        ["j/k", "navigate"],
+        ["h/l", "change pane"],
+        ["Enter", "select"],
         ["Tab", "switch tabs"],
         ["?", "keybindings"],
         ["Q", "quit"],
@@ -738,6 +761,61 @@ export async function runApp(): Promise<void> {
         }
       }
       closePrompt();
+      return;
+    }
+    if (mode === "collaboration-comment") {
+      const request = pendingCollaborationPrompt;
+      if (!request || request.kind !== "comment") {
+        closePrompt();
+        return;
+      }
+      const lineMatch = value.match(/^(.+):(\d+)\s*\|\s*(.+)$/);
+      const fileMatch = value.match(/^(.+?)\s*\|\s*(.+)$/);
+      const match = request.commentType === "line" ? lineMatch : fileMatch;
+      if (!match) {
+        footerText.content = request.commentType === "line"
+          ? "Use path:line | comment."
+          : "Use path | comment.";
+        return;
+      }
+      if (request.commentType === "line" && Number(match[2]) < 1) {
+        footerText.content = "Line numbers start at 1.";
+        return;
+      }
+      const comment: PullRequestCommentInput = {
+        filePath: match[1].trim(),
+        body: match[request.commentType === "line" ? 3 : 2].trim(),
+        ...(request.commentType === "line" ? { line: Number(match[2]) } : {}),
+      };
+      pendingCollaborationPrompt = null;
+      closePrompt();
+      void collaborationPanel.createPullRequestComment(comment).then(() => {
+        footerText.content = "Comment created.";
+      }).catch((error: unknown) => {
+        footerText.content = `Unable to create comment: ${String(error)}`;
+      });
+      return;
+    }
+    if (mode === "collaboration-action") {
+      const request = pendingCollaborationPrompt;
+      const answer = value.toLowerCase();
+      if (answer !== "y" && answer !== "n") {
+        footerText.content = "Please type y or n.";
+        return;
+      }
+      pendingCollaborationPrompt = null;
+      closePrompt();
+      if (answer !== "y" || !request) return;
+      const operation = request.kind === "resolve-comment"
+        ? collaborationPanel.updateSelectedCommentStatus()
+        : request.kind === "action"
+          ? collaborationPanel.executePullRequestAction(request.action)
+          : Promise.resolve();
+      void operation.then(() => {
+        footerText.content = "Collaboration action completed.";
+      }).catch((error: unknown) => {
+        footerText.content = `Unable to update pull request: ${String(error)}`;
+      });
       return;
     }
     if (mode === "authenticate") {
@@ -999,6 +1077,18 @@ export async function runApp(): Promise<void> {
     }
     if (state.activeTab === 1) {
       return;
+    }
+    if (state.activeTab === 2 && !state.promptActive && !state.keybindingsActive && !state.configEditorActive) {
+      if (key.name === "l") {
+        key.preventDefault();
+        collaborationPanel.focusNext();
+        return;
+      }
+      if (key.name === "h") {
+        key.preventDefault();
+        collaborationPanel.focusPrevious();
+        return;
+      }
     }
     if (state.activeTab === 3 && !state.promptActive && !state.keybindingsActive && !state.configEditorActive) {
       if (key.name === "h") {

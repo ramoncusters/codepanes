@@ -10,6 +10,8 @@ export type PromptMode =
   | "authenticate"
   | "apply-theme"
   | "switch-actions"
+  | "collaboration-comment"
+  | "collaboration-action"
   | "select-base"
   | null;
 

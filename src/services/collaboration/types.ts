@@ -25,6 +25,7 @@ export type PullRequestCapabilities = {
   canComment: boolean;
   canChangeCommentStatus: boolean;
   canMerge: boolean;
+  canComplete: boolean;
   canAbandon: boolean;
 };
 
@@ -63,6 +64,34 @@ export type PullRequestDiff = {
   additions: number;
   deletions: number;
 };
+
+export type PullRequestCommentStatus = "active" | "resolved" | "closed" | "unknown";
+export type PullRequestCommentSide = "left" | "right";
+export type PullRequestCommentKind = "file" | "line";
+
+export type PullRequestComment = {
+  id: string;
+  kind: PullRequestCommentKind;
+  body: string;
+  author: string;
+  createdAt: string;
+  updatedAt?: string;
+  status: PullRequestCommentStatus;
+  filePath?: string;
+  line?: number;
+  side?: PullRequestCommentSide;
+  url?: string;
+  threadId?: string;
+};
+
+export type PullRequestCommentInput = {
+  body: string;
+  filePath: string;
+  line?: number;
+  side?: PullRequestCommentSide;
+};
+
+export type PullRequestAction = "merge" | "complete" | "abandon";
 
 export type PipelineStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "unknown";
 
@@ -116,6 +145,8 @@ export type CollaborationProviderCapabilities = {
   pullRequests: boolean;
   pullRequestDiffs: boolean;
   pullRequestComments: boolean;
+  pullRequestCommentStatus: boolean;
+  pullRequestActions: boolean;
   pipelines: boolean;
   pipelineLogs: boolean;
   pipelineControls: boolean;
@@ -130,6 +161,16 @@ export interface CollaborationProvider {
   listPullRequests(query: CollaborationQuery): Promise<CollaborationPage<PullRequest>>;
   getPullRequest(id: string): Promise<PullRequestDetails>;
   getPullRequestDiff(id: string): Promise<PullRequestDiff>;
+  listPullRequestComments(id: string): Promise<CollaborationPage<PullRequestComment>>;
+  createPullRequestComment(id: string, comment: PullRequestCommentInput): Promise<PullRequestComment>;
+  updatePullRequestCommentStatus(
+    pullRequestId: string,
+    commentId: string,
+    status: PullRequestCommentStatus,
+  ): Promise<PullRequestComment>;
+  mergePullRequest(id: string): Promise<PullRequestDetails>;
+  completePullRequest(id: string): Promise<PullRequestDetails>;
+  abandonPullRequest(id: string): Promise<PullRequestDetails>;
 
   listPipelines(query: CollaborationQuery): Promise<CollaborationPage<Pipeline>>;
   getPipeline(id: string): Promise<PipelineDetails>;
