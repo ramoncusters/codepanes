@@ -1,0 +1,15 @@
+{
+  "id": "ayu-mirage",
+  "name": "Ayu Mirage",
+  "mode": "dark",
+  "background": "#1f2430",
+  "panelBackground": "#242936",
+  "inputBackground": "#171b24",
+  "focusedBackground": "#33415e",
+  "border": "#3d465c",
+  "accent": "#ffcc66",
+  "text": "#cbccc6",
+  "muted": "#707a8c",
+  "success": "#bae67e",
+  "error": "#f28779"
+}

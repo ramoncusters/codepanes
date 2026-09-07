@@ -1,0 +1,15 @@
+{
+  "id": "night-owl",
+  "name": "Night Owl",
+  "mode": "dark",
+  "background": "#011627",
+  "panelBackground": "#0b2942",
+  "inputBackground": "#01111f",
+  "focusedBackground": "#123d5a",
+  "border": "#234d6f",
+  "accent": "#82aaff",
+  "text": "#d6deeb",
+  "muted": "#637777",
+  "success": "#addb67",
+  "error": "#ef5350"
+}

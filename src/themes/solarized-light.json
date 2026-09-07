@@ -1,0 +1,15 @@
+{
+  "id": "solarized-light",
+  "name": "Solarized Light",
+  "mode": "light",
+  "background": "#fdf6e3",
+  "panelBackground": "#eee8d5",
+  "inputBackground": "#e7dfc8",
+  "focusedBackground": "#d3cbb7",
+  "border": "#93a1a1",
+  "accent": "#268bd2",
+  "text": "#657b83",
+  "muted": "#839496",
+  "success": "#859900",
+  "error": "#dc322f"
+}

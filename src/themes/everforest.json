@@ -1,0 +1,15 @@
+{
+  "id": "everforest",
+  "name": "Everforest",
+  "mode": "dark",
+  "background": "#2d353b",
+  "panelBackground": "#343f44",
+  "inputBackground": "#272e33",
+  "focusedBackground": "#475258",
+  "border": "#56635f",
+  "accent": "#a7c080",
+  "text": "#d3c6aa",
+  "muted": "#859289",
+  "success": "#a7c080",
+  "error": "#e67e80"
+}

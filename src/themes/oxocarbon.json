@@ -1,0 +1,15 @@
+{
+  "id": "oxocarbon",
+  "name": "Oxocarbon",
+  "mode": "dark",
+  "background": "#161616",
+  "panelBackground": "#262626",
+  "inputBackground": "#0f0f0f",
+  "focusedBackground": "#393939",
+  "border": "#525252",
+  "accent": "#78a9ff",
+  "text": "#f4f4f4",
+  "muted": "#a8a8a8",
+  "success": "#42be65",
+  "error": "#fa4d56"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "moonfly",
+  "name": "Moonfly",
+  "mode": "dark",
+  "background": "#080808",
+  "panelBackground": "#121212",
+  "inputBackground": "#050505",
+  "focusedBackground": "#303030",
+  "border": "#5c5c5c",
+  "accent": "#80a0ff",
+  "text": "#bdbdbd",
+  "muted": "#585858",
+  "success": "#8cc85f",
+  "error": "#ff5454"
+}

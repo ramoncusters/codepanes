@@ -1,0 +1,15 @@
+{
+  "id": "rose-pine",
+  "name": "Rosé Pine",
+  "mode": "dark",
+  "background": "#191724",
+  "panelBackground": "#1f1d2e",
+  "inputBackground": "#13111c",
+  "focusedBackground": "#26233a",
+  "border": "#524f67",
+  "accent": "#c4a7e7",
+  "text": "#e0def4",
+  "muted": "#908caa",
+  "success": "#9ccfd8",
+  "error": "#eb6f92"
+}

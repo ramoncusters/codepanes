@@ -1,0 +1,15 @@
+{
+  "id": "sonokai",
+  "name": "Sonokai",
+  "mode": "dark",
+  "background": "#2d2a2e",
+  "panelBackground": "#403e41",
+  "inputBackground": "#221f22",
+  "focusedBackground": "#5b595c",
+  "border": "#727072",
+  "accent": "#fc9867",
+  "text": "#e2e2e3",
+  "muted": "#939293",
+  "success": "#9ed072",
+  "error": "#fc5d7c"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "monokai-pro",
+  "name": "Monokai Pro",
+  "mode": "dark",
+  "background": "#2d2a2e",
+  "panelBackground": "#403e41",
+  "inputBackground": "#221f22",
+  "focusedBackground": "#5b595c",
+  "border": "#727072",
+  "accent": "#ffd866",
+  "text": "#fcfcfa",
+  "muted": "#939293",
+  "success": "#a9dc76",
+  "error": "#ff6188"
+}

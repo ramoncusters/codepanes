@@ -1,0 +1,15 @@
+{
+  "id": "tokyo-night",
+  "name": "Tokyo Night",
+  "mode": "dark",
+  "background": "#1a1b26",
+  "panelBackground": "#16161e",
+  "inputBackground": "#13131c",
+  "focusedBackground": "#292e42",
+  "border": "#3b4261",
+  "accent": "#7aa2f7",
+  "text": "#c0caf5",
+  "muted": "#565f89",
+  "success": "#9ece6a",
+  "error": "#f7768e"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "aura",
+  "name": "Aura",
+  "mode": "dark",
+  "background": "#15141b",
+  "panelBackground": "#1c1b22",
+  "inputBackground": "#100f14",
+  "focusedBackground": "#2d2b38",
+  "border": "#4d4a5e",
+  "accent": "#a277ff",
+  "text": "#edecee",
+  "muted": "#6d6d6d",
+  "success": "#61ffca",
+  "error": "#ff6767"
+}

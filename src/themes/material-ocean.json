@@ -1,0 +1,15 @@
+{
+  "id": "material-ocean",
+  "name": "Material Ocean",
+  "mode": "dark",
+  "background": "#0f111a",
+  "panelBackground": "#1b1e2b",
+  "inputBackground": "#090b10",
+  "focusedBackground": "#292d3e",
+  "border": "#464b5d",
+  "accent": "#82aaff",
+  "text": "#d0d0d0",
+  "muted": "#676e95",
+  "success": "#c3e88d",
+  "error": "#f07178"
+}

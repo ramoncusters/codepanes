@@ -1,0 +1,15 @@
+{
+  "id": "catppuccin-latte",
+  "name": "Catppuccin Latte",
+  "mode": "light",
+  "background": "#eff1f5",
+  "panelBackground": "#e6e9ef",
+  "inputBackground": "#dce0e8",
+  "focusedBackground": "#ccd0da",
+  "border": "#9ca0b0",
+  "accent": "#1e66f5",
+  "text": "#4c4f69",
+  "muted": "#6c6f85",
+  "success": "#40a02b",
+  "error": "#d20f39"
+}

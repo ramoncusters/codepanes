@@ -1,0 +1,15 @@
+{
+  "id": "melange",
+  "name": "Melange",
+  "mode": "dark",
+  "background": "#292522",
+  "panelBackground": "#34302c",
+  "inputBackground": "#211e1c",
+  "focusedBackground": "#49443c",
+  "border": "#625b51",
+  "accent": "#e9b872",
+  "text": "#ece1d7",
+  "muted": "#867f78",
+  "success": "#85b695",
+  "error": "#d47766"
+}

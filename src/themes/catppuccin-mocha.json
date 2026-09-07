@@ -1,0 +1,15 @@
+{
+  "id": "catppuccin-mocha",
+  "name": "Catppuccin Mocha",
+  "mode": "dark",
+  "background": "#1e1e2e",
+  "panelBackground": "#181825",
+  "inputBackground": "#11111b",
+  "focusedBackground": "#313244",
+  "border": "#45475a",
+  "accent": "#89b4fa",
+  "text": "#cdd6f4",
+  "muted": "#a6adc8",
+  "success": "#a6e3a1",
+  "error": "#f38ba8"
+}

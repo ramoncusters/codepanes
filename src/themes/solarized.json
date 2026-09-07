@@ -1,6 +1,7 @@
 {
   "id": "solarized",
   "name": "Solarized",
+  "mode": "dark",
   "background": "#002b36",
   "panelBackground": "#073642",
   "inputBackground": "#00212b",

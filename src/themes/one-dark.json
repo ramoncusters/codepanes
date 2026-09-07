@@ -1,0 +1,15 @@
+{
+  "id": "one-dark",
+  "name": "One Dark",
+  "mode": "dark",
+  "background": "#282c34",
+  "panelBackground": "#21252b",
+  "inputBackground": "#1b1d23",
+  "focusedBackground": "#3e4451",
+  "border": "#4b5263",
+  "accent": "#61afef",
+  "text": "#abb2bf",
+  "muted": "#7f848e",
+  "success": "#98c379",
+  "error": "#e06c75"
+}

@@ -1,6 +1,7 @@
 {
   "id": "forest",
   "name": "Forest",
+  "mode": "dark",
   "background": "#0d1b16",
   "panelBackground": "#153326",
   "inputBackground": "#0a1410",

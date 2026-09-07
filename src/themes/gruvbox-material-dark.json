@@ -1,0 +1,15 @@
+{
+  "id": "gruvbox-material-dark",
+  "name": "Gruvbox Material Dark",
+  "mode": "dark",
+  "background": "#282828",
+  "panelBackground": "#32302f",
+  "inputBackground": "#1d2021",
+  "focusedBackground": "#3c3836",
+  "border": "#665c54",
+  "accent": "#d79921",
+  "text": "#ebdbb2",
+  "muted": "#928374",
+  "success": "#a9b665",
+  "error": "#ea6962"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "nord",
+  "name": "Nord",
+  "mode": "dark",
+  "background": "#2e3440",
+  "panelBackground": "#3b4252",
+  "inputBackground": "#272c36",
+  "focusedBackground": "#434c5e",
+  "border": "#4c566a",
+  "accent": "#88c0d0",
+  "text": "#eceff4",
+  "muted": "#d8dee9",
+  "success": "#a3be8c",
+  "error": "#bf616a"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "zephyr",
+  "name": "Zephyr",
+  "mode": "dark",
+  "background": "#202746",
+  "panelBackground": "#29304d",
+  "inputBackground": "#171d35",
+  "focusedBackground": "#414b72",
+  "border": "#59658f",
+  "accent": "#65bcff",
+  "text": "#d6d6d7",
+  "muted": "#8990b3",
+  "success": "#85cc95",
+  "error": "#f38ba8"
+}

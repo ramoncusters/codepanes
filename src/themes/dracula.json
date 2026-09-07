@@ -1,6 +1,7 @@
 {
   "id": "dracula",
   "name": "Dracula",
+  "mode": "dark",
   "background": "#282a36",
   "panelBackground": "#44475a",
   "inputBackground": "#21222c",

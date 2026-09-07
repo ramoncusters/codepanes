@@ -1,6 +1,7 @@
 {
   "id": "midnight",
   "name": "Midnight",
+  "mode": "dark",
   "background": "#0b1020",
   "panelBackground": "#111a33",
   "inputBackground": "#0b1020",

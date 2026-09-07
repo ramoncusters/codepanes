@@ -1,0 +1,15 @@
+{
+  "id": "github-light",
+  "name": "GitHub Light",
+  "mode": "light",
+  "background": "#ffffff",
+  "panelBackground": "#f6f8fa",
+  "inputBackground": "#f0f3f6",
+  "focusedBackground": "#d0d7de",
+  "border": "#afb8c1",
+  "accent": "#0969da",
+  "text": "#1f2328",
+  "muted": "#656d76",
+  "success": "#1a7f37",
+  "error": "#cf222e"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "dark-plus",
+  "name": "Dark Plus",
+  "mode": "dark",
+  "background": "#1e1e1e",
+  "panelBackground": "#252526",
+  "inputBackground": "#181818",
+  "focusedBackground": "#37373d",
+  "border": "#3e3e42",
+  "accent": "#569cd6",
+  "text": "#d4d4d4",
+  "muted": "#808080",
+  "success": "#6a9955",
+  "error": "#f44747"
+}

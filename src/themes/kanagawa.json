@@ -1,0 +1,15 @@
+{
+  "id": "kanagawa",
+  "name": "Kanagawa",
+  "mode": "dark",
+  "background": "#1f1f28",
+  "panelBackground": "#16161d",
+  "inputBackground": "#1a1a22",
+  "focusedBackground": "#2a2a37",
+  "border": "#54546d",
+  "accent": "#7e9cd8",
+  "text": "#dcd7ba",
+  "muted": "#727169",
+  "success": "#98bb6c",
+  "error": "#e82424"
+}
