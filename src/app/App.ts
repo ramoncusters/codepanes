@@ -142,6 +142,8 @@ export async function runApp(): Promise<void> {
         openPrompt("collaboration-comment", `Add ${request.commentType} comment (${format}):`);
       } else if (request.kind === "resolve-comment") {
         openPrompt("collaboration-action", "Resolve this comment? Type y or n:");
+      } else if (request.kind === "pipeline-action") {
+        openPrompt("collaboration-action", `${request.action} this pipeline? Type y or n:`);
       } else {
         openPrompt("collaboration-action", `${request.action} this pull request? Type y or n:`);
       }
@@ -810,11 +812,13 @@ export async function runApp(): Promise<void> {
         ? collaborationPanel.updateSelectedCommentStatus()
         : request.kind === "action"
           ? collaborationPanel.executePullRequestAction(request.action)
+          : request.kind === "pipeline-action"
+            ? collaborationPanel.executePipelineAction(request.action)
           : Promise.resolve();
       void operation.then(() => {
         footerText.content = "Collaboration action completed.";
       }).catch((error: unknown) => {
-        footerText.content = `Unable to update pull request: ${String(error)}`;
+        footerText.content = `Unable to complete collaboration action: ${String(error)}`;
       });
       return;
     }

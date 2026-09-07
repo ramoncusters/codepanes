@@ -101,6 +101,7 @@ export type Pipeline = {
   status: PipelineStatus;
   branch?: string;
   commit?: string;
+  definitionId?: string;
   startedAt?: string;
   finishedAt?: string;
   url: string;
@@ -126,15 +127,28 @@ export type PipelineStage = {
   finishedAt?: string;
 };
 
+export type PipelineAction = "run" | "cancel" | "retry" | "approve" | "resume";
+
+export type PipelineControlCapabilities = {
+  run: boolean;
+  cancel: boolean;
+  retry: boolean;
+  approve: boolean;
+  resume: boolean;
+};
+
+export type PipelineCapabilities = {
+  stages: boolean;
+  jobs: boolean;
+  logs: boolean;
+  controls: PipelineControlCapabilities;
+  limitations: string[];
+};
+
 export type PipelineDetails = Pipeline & {
   stages: PipelineStage[];
   jobs: PipelineJob[];
-  capabilities: {
-    stages: boolean;
-    jobs: boolean;
-    logs: boolean;
-    limitations: string[];
-  };
+  capabilities: PipelineCapabilities;
 };
 
 export type IssueStatus = "open" | "closed" | "unknown";
@@ -197,6 +211,11 @@ export interface CollaborationProvider {
   listPipelines(query: CollaborationQuery): Promise<CollaborationPage<Pipeline>>;
   getPipeline(id: string): Promise<PipelineDetails>;
   getPipelineLog(jobId: string): Promise<string>;
+  runPipeline(id: string): Promise<void>;
+  cancelPipeline(id: string): Promise<void>;
+  retryPipeline(id: string): Promise<void>;
+  approvePipeline(id: string): Promise<void>;
+  resumePipeline(id: string): Promise<void>;
 
   listIssues(query: CollaborationQuery): Promise<CollaborationPage<Issue>>;
   getIssue(id: string): Promise<IssueDetails>;

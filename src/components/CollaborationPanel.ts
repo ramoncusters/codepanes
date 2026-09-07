@@ -8,6 +8,7 @@ import {
 import type { Theme } from "../services/themes.js";
 import type {
   CollaborationProvider,
+  PipelineAction,
   Pipeline,
   PipelineDetails,
   PipelineJob,
@@ -30,7 +31,8 @@ type DiffMode = "summary" | "inline" | "side-by-side";
 export type CollaborationPromptRequest =
   | { kind: "comment"; pullRequest: PullRequest; commentType: "file" | "line" }
   | { kind: "action"; pullRequest: PullRequest; action: PullRequestAction }
-  | { kind: "resolve-comment"; pullRequest: PullRequest; comment: PullRequestComment };
+  | { kind: "resolve-comment"; pullRequest: PullRequest; comment: PullRequestComment }
+  | { kind: "pipeline-action"; pipeline: Pipeline; action: PipelineAction };
 
 function renderDiff(diff: PullRequestDiff, mode: DiffMode): string {
   if (mode === "summary") {
@@ -73,6 +75,7 @@ export class CollaborationPanel {
   private readonly pullRequestSelect: SelectRenderable;
   private readonly pipelineSelect: SelectRenderable;
   private readonly pipelineJobSelect: SelectRenderable;
+  private readonly pipelineActionSelect: SelectRenderable;
   private readonly diffModeSelect: SelectRenderable;
   private readonly commentSelect: SelectRenderable;
   private readonly actionSelect: SelectRenderable;
@@ -98,6 +101,7 @@ export class CollaborationPanel {
     | "pull-requests"
     | "pipelines"
     | "pipeline-jobs"
+    | "pipeline-actions"
     | "comments"
     | "actions" = "resources";
   private readonly onAuthenticationRequired: (provider: "github" | "azure") => void;
@@ -202,6 +206,14 @@ export class CollaborationPanel {
       showDescription: true,
       itemSpacing: 1,
     });
+    this.pipelineActionSelect = new SelectRenderable(renderer, {
+      width: "100%",
+      height: 6,
+      visible: false,
+      options: [],
+      showDescription: true,
+      itemSpacing: 1,
+    });
     this.diffModeSelect = new SelectRenderable(renderer, {
       width: "100%",
       height: 1,
@@ -236,6 +248,7 @@ export class CollaborationPanel {
     this.detailPanel.add(this.pipelineSelect);
     this.detailPanel.add(this.detailText);
     this.detailPanel.add(this.pipelineJobSelect);
+    this.detailPanel.add(this.pipelineActionSelect);
     this.detailPanel.add(this.commentSelect);
     this.detailPanel.add(this.actionSelect);
     this.detailPanel.add(this.diffModeSelect);
@@ -259,6 +272,16 @@ export class CollaborationPanel {
     this.pipelineJobSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       const job = this.pipelineJobs[index];
       if (job) void this.showPipelineJob(job);
+    });
+    this.pipelineActionSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
+      const action = this.pipelineActionSelect.options[index]?.value as PipelineAction | undefined;
+      if (action && this.selectedPipeline) {
+        this.onPromptRequested({
+          kind: "pipeline-action",
+          pipeline: this.selectedPipeline,
+          action,
+        });
+      }
     });
     this.diffModeSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       const mode = this.diffModeSelect.options[index]?.value as DiffMode | undefined;
@@ -327,6 +350,12 @@ export class CollaborationPanel {
     } else if (this.focusedSection === "pipelines" && this.pipelineJobSelect.visible) {
       this.focusedSection = "pipeline-jobs";
       this.pipelineJobSelect.focus();
+    } else if (this.focusedSection === "pipelines" && this.pipelineActionSelect.visible) {
+      this.focusedSection = "pipeline-actions";
+      this.pipelineActionSelect.focus();
+    } else if (this.focusedSection === "pipeline-jobs" && this.pipelineActionSelect.visible) {
+      this.focusedSection = "pipeline-actions";
+      this.pipelineActionSelect.focus();
     } else if (this.focusedSection === "pull-requests" && this.commentSelect.visible) {
       this.focusedSection = "comments";
       this.commentSelect.focus();
@@ -343,8 +372,21 @@ export class CollaborationPanel {
 
   focusPrevious(): void {
     if (this.focusedSection === "pipeline-jobs") {
-      this.focusedSection = "pipelines";
-      this.pipelineSelect.focus();
+      if (this.pipelineActionSelect.visible) {
+        this.focusedSection = "pipeline-actions";
+        this.pipelineActionSelect.focus();
+      } else {
+        this.focusedSection = "pipelines";
+        this.pipelineSelect.focus();
+      }
+    } else if (this.focusedSection === "pipeline-actions") {
+      if (this.pipelineJobSelect.visible) {
+        this.focusedSection = "pipeline-jobs";
+        this.pipelineJobSelect.focus();
+      } else {
+        this.focusedSection = "pipelines";
+        this.pipelineSelect.focus();
+      }
     } else if (this.focusedSection === "actions" && this.commentSelect.visible) {
       this.focusedSection = "comments";
       this.commentSelect.focus();
@@ -397,6 +439,28 @@ export class CollaborationPanel {
     this.updateActionOptions();
   }
 
+  async executePipelineAction(action: PipelineAction): Promise<void> {
+    if (!this.provider || !this.selectedPipeline) return;
+    const pipelineId = this.selectedPipeline.id;
+    try {
+      if (action === "run") {
+        await this.provider.runPipeline(pipelineId);
+      } else if (action === "cancel") {
+        await this.provider.cancelPipeline(pipelineId);
+      } else if (action === "retry") {
+        await this.provider.retryPipeline(pipelineId);
+      } else if (action === "approve") {
+        await this.provider.approvePipeline(pipelineId);
+      } else {
+        await this.provider.resumePipeline(pipelineId);
+      }
+      await this.showPipeline(this.selectedPipeline, true);
+    } catch (error) {
+      if (isAuthenticationError(error)) this.onAuthenticationRequired(this.provider.id);
+      throw error;
+    }
+  }
+
   applyTheme(theme: Theme): void {
     this.theme = theme;
     this.panel.backgroundColor = theme.background;
@@ -422,7 +486,7 @@ export class CollaborationPanel {
     this.pullRequestSelect.selectedTextColor = theme.text;
     this.pullRequestSelect.descriptionColor = theme.muted;
     this.pullRequestSelect.selectedDescriptionColor = theme.text;
-    for (const select of [this.pipelineSelect, this.pipelineJobSelect]) {
+    for (const select of [this.pipelineSelect, this.pipelineJobSelect, this.pipelineActionSelect]) {
       select.backgroundColor = theme.panelBackground;
       select.focusedBackgroundColor = theme.focusedBackground;
       select.selectedBackgroundColor = theme.focusedBackground;
@@ -459,6 +523,7 @@ export class CollaborationPanel {
     this.pullRequestSelect.visible = false;
     this.pipelineSelect.visible = false;
     this.pipelineJobSelect.visible = false;
+    this.pipelineActionSelect.visible = false;
     this.commentSelect.visible = false;
     this.actionSelect.visible = false;
     this.diffModeSelect.visible = false;
@@ -494,8 +559,11 @@ export class CollaborationPanel {
           ? "Select a pipeline run to view stages, jobs, and logs."
           : "No pipeline runs found.";
       } catch (error) {
-        this.detailText.content = `Unable to load pipelines: ${String(error)}`;
-        if (isAuthenticationError(error)) this.onAuthenticationRequired(this.provider.id);
+        const authenticationError = isAuthenticationError(error);
+        this.detailText.content = authenticationError
+          ? `Authentication required for ${this.provider.id}.`
+          : `Unable to load pipelines: ${String(error)}`;
+        if (authenticationError) this.onAuthenticationRequired(this.provider.id);
       }
       return;
     }
@@ -551,14 +619,29 @@ export class CollaborationPanel {
     }
   }
 
-  private async showPipeline(pipeline: Pipeline): Promise<void> {
+  private async showPipeline(pipeline: Pipeline, propagateError = false): Promise<void> {
     if (!this.provider) return;
     this.selectedPipeline = pipeline;
     this.pipelineLogText.visible = false;
     this.detailText.content = "Loading pipeline details...";
     try {
       const details = await this.provider.getPipeline(pipeline.id);
+      this.selectedPipeline = details;
       this.selectedPipelineDetails = details;
+      const pipelineIndex = this.pipelineSelect.options.findIndex(
+        (option) => (option.value as Pipeline | undefined)?.id === details.id,
+      );
+      if (pipelineIndex >= 0) {
+        this.pipelineSelect.options = this.pipelineSelect.options.map((option, index) =>
+          index === pipelineIndex
+            ? {
+              ...option,
+              name: `${details.status}  ${details.name}`,
+              description: `${details.branch ?? "unknown branch"} · ${details.commit?.slice(0, 8) ?? "no commit"}`,
+              value: details,
+            }
+            : option);
+      }
       this.pipelineJobs = details.jobs;
       this.detailText.content = this.renderPipelineSummary(details);
       this.pipelineJobSelect.options = details.jobs.map((job) => ({
@@ -567,9 +650,16 @@ export class CollaborationPanel {
         value: job,
       }));
       this.pipelineJobSelect.visible = details.jobs.length > 0;
+      this.updatePipelineActionOptions(details);
     } catch (error) {
-      this.detailText.content = `Unable to load pipeline details: ${String(error)}`;
+      const authenticationError = isAuthenticationError(error);
+      this.detailText.content = authenticationError
+        ? `Authentication required for ${this.provider.id}.`
+        : `Unable to load pipeline details: ${String(error)}`;
       this.pipelineJobSelect.visible = false;
+      this.pipelineActionSelect.visible = false;
+      if (authenticationError && !propagateError) this.onAuthenticationRequired(this.provider.id);
+      if (propagateError) throw error;
     }
   }
 
@@ -586,7 +676,11 @@ export class CollaborationPanel {
     try {
       this.pipelineLogText.content = await this.provider.getPipelineLog(job.id);
     } catch (error) {
-      this.pipelineLogText.content = `Unable to load job log: ${String(error)}`;
+      const authenticationError = isAuthenticationError(error);
+      this.pipelineLogText.content = authenticationError
+        ? `Authentication required for ${this.provider.id}.`
+        : `Unable to load job log: ${String(error)}`;
+      if (authenticationError) this.onAuthenticationRequired(this.provider.id);
     }
   }
 
@@ -659,6 +753,33 @@ export class CollaborationPanel {
     }
     this.actionSelect.options = options;
     this.actionSelect.visible = true;
+  }
+
+  private updatePipelineActionOptions(details: PipelineDetails): void {
+    const controls = details.capabilities.controls;
+    const labels: Record<PipelineAction, string> = {
+      run: "Run pipeline",
+      cancel: "Cancel pipeline",
+      retry: "Retry pipeline",
+      approve: "Approve pipeline",
+      resume: "Resume pipeline",
+    };
+    const descriptions: Record<PipelineAction, string> = {
+      run: "Start a new run for this pipeline",
+      cancel: "Cancel the active run",
+      retry: "Retry the failed or canceled run",
+      approve: "Approve a pending run",
+      resume: "Resume a paused run",
+    };
+    const actions: PipelineAction[] = ["run", "cancel", "retry", "approve", "resume"];
+    this.pipelineActionSelect.options = actions
+      .filter((action) => controls[action])
+      .map((action) => ({
+        name: labels[action],
+        description: descriptions[action],
+        value: action,
+      }));
+    this.pipelineActionSelect.visible = this.pipelineActionSelect.options.length > 0;
   }
 
   private renderPullRequestSummary(

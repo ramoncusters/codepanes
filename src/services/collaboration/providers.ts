@@ -8,6 +8,7 @@ import type {
   Issue,
   IssueDetails,
   Pipeline,
+  PipelineControlCapabilities,
   PipelineDetails,
   PipelineJob,
   PipelineStatus,
@@ -26,24 +27,42 @@ const execFileAsync = promisify(execFile);
 const unsupported = (operation: string): Promise<never> =>
   Promise.reject(new Error(`${operation} is not implemented for this provider yet`));
 
+function commandErrorDetail(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const stderr = "stderr" in error && typeof error.stderr === "string" ? error.stderr.trim() : "";
+  return stderr ? `${error.message}: ${stderr}` : error.message;
+}
+
 async function runJsonCommand<T>(command: string, args: string[]): Promise<T> {
   try {
     const { stdout } = await execFileAsync(command, args, { maxBuffer: 10 * 1024 * 1024 });
     return JSON.parse(stdout) as T;
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = commandErrorDetail(error);
     throw new Error(`${command} request failed: ${detail}`);
   }
 }
 
 export function isAuthenticationError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /authentication|unauthori[sz]ed|not logged in|login required|sign in|status code 401|status code 403|AADSTS/i.test(message);
+  return /authentication|unauthori[sz]ed|not logged in|login required|sign in|status code 401|status code 403|\bHTTP 401\b|\bHTTP 403\b|bad credentials|AADSTS|az login/i.test(message);
 }
 
 async function runTextCommand(command: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync(command, args, { maxBuffer: 20 * 1024 * 1024 });
-  return stdout;
+  try {
+    const { stdout } = await execFileAsync(command, args, { maxBuffer: 20 * 1024 * 1024 });
+    return stdout;
+  } catch (error) {
+    throw new Error(`${command} request failed: ${commandErrorDetail(error)}`);
+  }
+}
+
+async function runCommand(command: string, args: string[]): Promise<void> {
+  try {
+    await execFileAsync(command, args, { maxBuffer: 10 * 1024 * 1024 });
+  } catch (error) {
+    throw new Error(`${command} request failed: ${commandErrorDetail(error)}`);
+  }
 }
 
 abstract class CliProvider implements CollaborationProvider {
@@ -78,6 +97,26 @@ abstract class CliProvider implements CollaborationProvider {
 
   getPipelineLog(_jobId: string): Promise<string> {
     return unsupported("Pipeline logs");
+  }
+
+  runPipeline(_id: string): Promise<void> {
+    return unsupported("Running pipelines");
+  }
+
+  cancelPipeline(_id: string): Promise<void> {
+    return unsupported("Canceling pipelines");
+  }
+
+  retryPipeline(_id: string): Promise<void> {
+    return unsupported("Retrying pipelines");
+  }
+
+  approvePipeline(_id: string): Promise<void> {
+    return unsupported("Approving pipelines");
+  }
+
+  resumePipeline(_id: string): Promise<void> {
+    return unsupported("Resuming pipelines");
   }
 
   listIssues(_query: CollaborationQuery): Promise<CollaborationPage<Issue>> {
@@ -121,6 +160,7 @@ type GitHubReviewComment = {
 
 type GitHubWorkflowRun = {
   id: number;
+  workflow_id?: number;
   name?: string;
   display_title?: string;
   status?: string;
@@ -160,7 +200,7 @@ export class GitHubProvider extends CliProvider {
     pipelineStages: false,
     pipelineJobs: true,
     pipelineLogs: true,
-    pipelineControls: false,
+    pipelineControls: true,
     issues: false,
     issueMutations: false,
   };
@@ -346,6 +386,7 @@ export class GitHubProvider extends CliProvider {
         stages: false,
         jobs: true,
         logs: true,
+        controls: this.getPipelineControls(run),
         limitations: ["GitHub Actions does not expose pipeline stages; jobs are shown directly."],
       },
     };
@@ -356,6 +397,59 @@ export class GitHubProvider extends CliProvider {
       "api",
       `repos/${this.owner}/${this.repository}/actions/jobs/${jobId}/logs`,
     ]);
+  }
+
+  async runPipeline(id: string): Promise<void> {
+    const run = await runJsonCommand<GitHubWorkflowRun>("gh", [
+      "api",
+      `repos/${this.owner}/${this.repository}/actions/runs/${id}`,
+    ]);
+    if (run.workflow_id === undefined) {
+      throw new Error("GitHub did not provide a workflow for this run");
+    }
+    const args = [
+      "workflow",
+      "run",
+      String(run.workflow_id),
+      "--repo",
+      `${this.owner}/${this.repository}`,
+    ];
+    if (run.head_branch) args.push("--ref", run.head_branch);
+    await runCommand("gh", args);
+  }
+
+  async cancelPipeline(id: string): Promise<void> {
+    await runCommand("gh", [
+      "run",
+      "cancel",
+      id,
+      "--repo",
+      `${this.owner}/${this.repository}`,
+    ]);
+  }
+
+  async retryPipeline(id: string): Promise<void> {
+    await runCommand("gh", [
+      "run",
+      "rerun",
+      id,
+      "--failed",
+      "--repo",
+      `${this.owner}/${this.repository}`,
+    ]);
+  }
+
+  async approvePipeline(id: string): Promise<void> {
+    await runCommand("gh", [
+      "api",
+      `repos/${this.owner}/${this.repository}/actions/runs/${id}/approve`,
+      "--method",
+      "POST",
+    ]);
+  }
+
+  resumePipeline(_id: string): Promise<void> {
+    return unsupported("Resuming GitHub Actions runs");
   }
 
   private mapPullRequest(pullRequest: GitHubPullRequest): PullRequest {
@@ -396,9 +490,25 @@ export class GitHubProvider extends CliProvider {
       status: mapPipelineStatus(run.status, run.conclusion),
       branch: run.head_branch ?? undefined,
       commit: run.head_sha ?? undefined,
+      definitionId: run.workflow_id === undefined ? undefined : String(run.workflow_id),
       startedAt: run.run_started_at ?? run.created_at ?? undefined,
       finishedAt: run.status === "completed" ? run.updated_at : undefined,
       url: run.html_url,
+    };
+  }
+
+  private getPipelineControls(run: GitHubWorkflowRun): PipelineControlCapabilities {
+    const active = run.status === "queued" || run.status === "in_progress" || run.status === "waiting";
+    const retryable = run.status === "completed"
+      && ["failure", "cancelled", "timed_out", "startup_failure", "action_required"].includes(
+        run.conclusion ?? "",
+      );
+    return {
+      run: run.workflow_id !== undefined,
+      cancel: active,
+      retry: retryable,
+      approve: run.status === "waiting" || run.conclusion === "action_required",
+      resume: false,
     };
   }
 
@@ -490,7 +600,7 @@ export class AzureProvider extends CliProvider {
     pipelineStages: true,
     pipelineJobs: true,
     pipelineLogs: true,
-    pipelineControls: false,
+    pipelineControls: true,
     issues: false,
     issueMutations: false,
   };
@@ -841,6 +951,7 @@ export class AzureProvider extends CliProvider {
         stages: stageRecords.length > 0,
         jobs: jobRecords.length > 0,
         logs: jobs.some((job) => job.logAvailable),
+        controls: this.getPipelineControls(run),
         limitations: stageRecords.length === 0
           ? ["Azure DevOps did not return stage records for this run."]
           : [],
@@ -893,6 +1004,68 @@ export class AzureProvider extends CliProvider {
     ]);
   }
 
+  async runPipeline(id: string): Promise<void> {
+    const run = await runJsonCommand<AzurePipelineRun>("az", [
+      "pipelines",
+      "runs",
+      "show",
+      "--id",
+      id,
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--project",
+      this.project,
+      "--output",
+      "json",
+    ]);
+    const definitionId = run.definition?.id;
+    if (definitionId === undefined) {
+      throw new Error("Azure DevOps did not provide a pipeline definition for this run");
+    }
+    const args = [
+      "pipelines",
+      "run",
+      "--id",
+      String(definitionId),
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--project",
+      this.project,
+    ];
+    if (run.sourceBranch) args.push("--branch", run.sourceBranch.replace(/^refs\/heads\//, ""));
+    args.push("--output", "none");
+    await runCommand("az", args);
+  }
+
+  async cancelPipeline(id: string): Promise<void> {
+    await runCommand("az", [
+      "pipelines",
+      "runs",
+      "cancel",
+      "--id",
+      id,
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--project",
+      this.project,
+      "--output",
+      "none",
+    ]);
+  }
+
+  async retryPipeline(id: string): Promise<void> {
+    const project = encodeURIComponent(this.project);
+    await runCommand("az", [
+      "rest",
+      "--method",
+      "post",
+      "--url",
+      `https://dev.azure.com/${this.organization}/${project}/_apis/build/builds/${id}/retry?api-version=7.1-preview.2`,
+      "--output",
+      "none",
+    ]);
+  }
+
   private mapPipeline(run: AzurePipelineRun): Pipeline {
     return {
       id: String(run.id),
@@ -900,6 +1073,7 @@ export class AzureProvider extends CliProvider {
       status: mapPipelineStatus(run.state ?? run.status, run.result),
       branch: run.sourceBranch?.replace(/^refs\/heads\//, ""),
       commit: run.sourceVersion,
+      definitionId: run.definition?.id === undefined ? undefined : String(run.definition.id),
       startedAt: run.startTime ?? run.createdDate ?? run.queueTime,
       finishedAt: run.finishTime ?? run.finishedDate ?? undefined,
       url: run.url ?? "",
@@ -916,6 +1090,22 @@ export class AzureProvider extends CliProvider {
       finishedAt: record.finishTime,
       stageId: record.parentId,
       url: record.url,
+    };
+  }
+
+  private getPipelineControls(run: AzurePipelineRun): PipelineControlCapabilities {
+    const active = run.state?.toLowerCase() !== "completed"
+      && run.status?.toLowerCase() !== "completed"
+      && !run.finishTime
+      && !run.finishedDate;
+    const retryable = !active
+      && ["failed", "canceled", "cancelled", "partiallysucceeded"].includes(run.result?.toLowerCase() ?? "");
+    return {
+      run: run.definition?.id !== undefined,
+      cancel: active,
+      retry: retryable,
+      approve: false,
+      resume: false,
     };
   }
 }
