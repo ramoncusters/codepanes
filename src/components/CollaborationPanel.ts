@@ -198,6 +198,7 @@ export class CollaborationPanel {
       visible: false,
       options: [],
       showDescription: true,
+      showSelectionIndicator: false,
       itemSpacing: 1,
     });
     this.pipelineSelect = new SelectRenderable(renderer, {
@@ -600,7 +601,7 @@ export class CollaborationPanel {
     this.detailText.content = "Loading pull requests...";
     try {
       const page = await this.provider.listPullRequests({});
-      this.pullRequests = page.items;
+      this.pullRequests = page.items.filter((pullRequest) => pullRequest.status !== "unknown");
       this.renderPullRequestGroups();
       this.pullRequestSelect.visible = true;
       this.detailText.content = page.items.length > 0
