@@ -167,7 +167,12 @@ export type Issue = {
 export type IssueDetails = Issue & {
   labels: string[];
   assignees: string[];
+  capabilities: {
+    canChangeStatus: boolean;
+  };
 };
+
+export type IssueAction = "close" | "reopen";
 
 export type CollaborationQuery = {
   cursor?: string;
@@ -219,4 +224,5 @@ export interface CollaborationProvider {
 
   listIssues(query: CollaborationQuery): Promise<CollaborationPage<Issue>>;
   getIssue(id: string): Promise<IssueDetails>;
+  updateIssueStatus(id: string, status: IssueStatus): Promise<IssueDetails>;
 }

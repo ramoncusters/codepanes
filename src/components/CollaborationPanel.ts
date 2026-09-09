@@ -20,6 +20,7 @@ import type {
   PullRequestDiff,
   Issue,
   IssueDetails,
+  IssueAction,
 } from "../services/collaboration/types.js";
 import { isAuthenticationError } from "../services/collaboration/providers.js";
 
@@ -38,7 +39,8 @@ export type CollaborationPromptRequest =
   | { kind: "comment"; pullRequest: PullRequest; commentType: "file" | "line" }
   | { kind: "action"; pullRequest: PullRequest; action: PullRequestAction }
   | { kind: "resolve-comment"; pullRequest: PullRequest; comment: PullRequestComment }
-  | { kind: "pipeline-action"; pipeline: Pipeline; action: PipelineAction };
+  | { kind: "pipeline-action"; pipeline: Pipeline; action: PipelineAction }
+  | { kind: "issue-action"; issue: Issue; action: IssueAction };
 
 function renderDiff(diff: PullRequestDiff, mode: DiffMode): string {
   if (mode === "summary") {
@@ -209,7 +211,6 @@ export class CollaborationPanel {
       visible: false,
       options: [],
       showDescription: true,
-      showSelectionIndicator: false,
       itemSpacing: 1,
     });
     this.pipelineSelect = new SelectRenderable(renderer, {
@@ -338,8 +339,16 @@ export class CollaborationPanel {
         | "line-comment"
         | "resolve-comment"
         | "refresh-comments"
+        | IssueAction
         | undefined;
-      if (!action || !this.selectedPullRequest) return;
+      if (!action) return;
+      if (action === "close" || action === "reopen") {
+        if (this.selectedIssue) {
+          this.onPromptRequested({ kind: "issue-action", issue: this.selectedIssue, action });
+        }
+        return;
+      }
+      if (!this.selectedPullRequest) return;
       if (action === "file-comment" || action === "line-comment") {
         this.onPromptRequested({
           kind: "comment",
@@ -396,6 +405,9 @@ export class CollaborationPanel {
     } else if (this.focusedSection === "pull-requests" && this.commentSelect.visible) {
       this.focusedSection = "comments";
       this.commentSelect.focus();
+    } else if (this.focusedSection === "issues" && this.actionSelect.visible) {
+      this.focusedSection = "actions";
+      this.actionSelect.focus();
     } else if (
       (this.focusedSection === "pull-requests" || this.focusedSection === "comments")
       && this.actionSelect.visible
@@ -427,6 +439,9 @@ export class CollaborationPanel {
     } else if (this.focusedSection === "actions" && this.commentSelect.visible) {
       this.focusedSection = "comments";
       this.commentSelect.focus();
+    } else if (this.focusedSection === "actions" && this.issueSelect.visible) {
+      this.focusedSection = "issues";
+      this.issueSelect.focus();
     } else if (
       (this.focusedSection === "actions" || this.focusedSection === "comments")
       && this.pullRequestSelect.visible
@@ -456,6 +471,11 @@ export class CollaborationPanel {
     if (this.selectedResourceIndex === 2) {
       const issue = this.issueSelect.options[this.issueSelect.getSelectedIndex()]?.value as Issue | undefined;
       if (issue) void this.showIssue(issue);
+      return;
+    }
+    if (this.selectedResourceIndex === 1) {
+      const pipeline = this.pipelineSelect.options[this.pipelineSelect.getSelectedIndex()]?.value as Pipeline | undefined;
+      if (pipeline) void this.showPipeline(pipeline);
       return;
     }
     this.activatePullRequestOption(this.pullRequestSelect.getSelectedIndex());
@@ -489,6 +509,30 @@ export class CollaborationPanel {
     this.selectedPullRequestDetails = details;
     this.detailText.content = this.renderPullRequestSummary(details);
     this.updateActionOptions();
+  }
+
+  async executeIssueAction(action: IssueAction): Promise<void> {
+    if (!this.provider || !this.selectedIssue) return;
+    try {
+      const status = action === "close" ? "closed" : "open";
+      const details = await this.provider.updateIssueStatus(this.selectedIssue.id, status);
+      this.selectedIssue = details;
+      this.selectedIssueDetails = details;
+      const issueIndex = this.issueSelect.options.findIndex(
+        (option) => (option.value as Issue | undefined)?.id === details.id,
+      );
+      if (issueIndex >= 0) {
+        this.issueSelect.options = this.issueSelect.options.map((option, index) =>
+          index === issueIndex
+            ? { ...option, description: `${details.status} · ${details.author}`, value: details }
+            : option);
+      }
+      this.renderIssueDetails(details);
+      this.updateIssueActionOptions(details);
+    } catch (error) {
+      if (isAuthenticationError(error)) this.onAuthenticationRequired(this.provider.id);
+      throw error;
+    }
   }
 
   async executePipelineAction(action: PipelineAction): Promise<void> {
@@ -734,7 +778,7 @@ export class CollaborationPanel {
         const collapsed = this.collapsedPullRequestGroups.has(status);
         const label = status[0].toUpperCase() + status.slice(1);
         const options: Array<{ name: string; description: string; value: PullRequestGroupOption }> = [{
-          name: `${collapsed ? "▶" : "▼"} ${label} (${pullRequests.length})`,
+          name: `${label} (${pullRequests.length})`,
           description: "",
           value: { kind: "group", status },
         }];
@@ -994,15 +1038,8 @@ export class CollaborationPanel {
       const details = await this.provider.getIssue(issue.id);
       if (loadId !== this.resourceLoadId || this.selectedIssue?.id !== issue.id) return;
       this.selectedIssueDetails = details;
-      this.detailText.content = [
-        `#${details.number} ${details.title}`,
-        `${details.status} · ${details.author}`,
-        details.updatedAt ? `updated ${details.updatedAt}` : "update time unavailable",
-        details.assignees.length > 0 ? `Assignees: ${details.assignees.join(", ")}` : "Unassigned",
-        details.labels.length > 0 ? `Labels: ${details.labels.join(", ")}` : "No labels",
-        "",
-        details.description ?? "No description.",
-      ].join("\n");
+      this.renderIssueDetails(details);
+      this.updateIssueActionOptions(details);
     } catch (error) {
       if (loadId !== this.resourceLoadId || this.selectedIssue?.id !== issue.id) return;
       const authenticationError = isAuthenticationError(error);
@@ -1011,5 +1048,31 @@ export class CollaborationPanel {
         : `Unable to load issue / work item details: ${String(error)}`;
       if (authenticationError) this.onAuthenticationRequired(this.provider.id);
     }
+  }
+
+  private renderIssueDetails(details: IssueDetails): void {
+    this.detailText.content = [
+      `#${details.number} ${details.title}`,
+      `${details.status} · ${details.author}`,
+      details.updatedAt ? `updated ${details.updatedAt}` : "update time unavailable",
+      details.assignees.length > 0 ? `Assignees: ${details.assignees.join(", ")}` : "Unassigned",
+      details.labels.length > 0 ? `Labels: ${details.labels.join(", ")}` : "No labels",
+      "",
+      details.description ?? "No description.",
+    ].join("\n");
+  }
+
+  private updateIssueActionOptions(details: IssueDetails): void {
+    if (!details.capabilities.canChangeStatus || !["open", "closed"].includes(details.status)) {
+      this.actionSelect.options = [];
+      this.actionSelect.visible = false;
+      return;
+    }
+    this.actionSelect.options = [{
+      name: details.status === "closed" ? "Reopen issue / work item" : "Close issue / work item",
+      description: details.status === "closed" ? "Set status to open" : "Set status to closed",
+      value: details.status === "closed" ? "reopen" : "close",
+    }];
+    this.actionSelect.visible = true;
   }
 }

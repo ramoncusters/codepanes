@@ -145,6 +145,8 @@ export async function runApp(): Promise<void> {
         openPrompt("collaboration-action", "Resolve this comment? Type y or n:");
       } else if (request.kind === "pipeline-action") {
         openPrompt("collaboration-action", `${request.action} this pipeline? Type y or n:`);
+      } else if (request.kind === "issue-action") {
+        openPrompt("collaboration-action", `${request.action} this issue / work item? Type y or n:`);
       } else {
         openPrompt("collaboration-action", `${request.action} this pull request? Type y or n:`);
       }
@@ -816,7 +818,9 @@ export async function runApp(): Promise<void> {
           ? collaborationPanel.executePullRequestAction(request.action)
           : request.kind === "pipeline-action"
             ? collaborationPanel.executePipelineAction(request.action)
-          : Promise.resolve();
+            : request.kind === "issue-action"
+              ? collaborationPanel.executeIssueAction(request.action)
+            : Promise.resolve();
       void operation.then(() => {
         footerText.content = "Collaboration action completed.";
       }).catch((error: unknown) => {

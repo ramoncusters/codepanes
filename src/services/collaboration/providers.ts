@@ -7,6 +7,7 @@ import type {
   CollaborationQuery,
   Issue,
   IssueDetails,
+  IssueStatus,
   Pipeline,
   PipelineControlCapabilities,
   PipelineDetails,
@@ -126,6 +127,10 @@ abstract class CliProvider implements CollaborationProvider {
   getIssue(_id: string): Promise<IssueDetails> {
     return unsupported("Issue details");
   }
+
+  updateIssueStatus(_id: string, _status: IssueStatus): Promise<IssueDetails> {
+    return unsupported("Changing issue status");
+  }
 }
 
 type GitHubPullRequest = {
@@ -217,7 +222,7 @@ export class GitHubProvider extends CliProvider {
     pipelineLogs: true,
     pipelineControls: true,
     issues: true,
-    issueMutations: false,
+    issueMutations: true,
   };
 
   constructor(
@@ -496,6 +501,21 @@ export class GitHubProvider extends CliProvider {
     return this.mapIssueDetails(issue);
   }
 
+  async updateIssueStatus(id: string, status: IssueStatus): Promise<IssueDetails> {
+    if (status !== "open" && status !== "closed") {
+      throw new Error("GitHub issue status must be open or closed");
+    }
+    await runJsonCommand<GitHubIssue>("gh", [
+      "api",
+      `repos/${this.owner}/${this.repository}/issues/${id}`,
+      "--method",
+      "PATCH",
+      "--field",
+      `state=${status}`,
+    ]);
+    return this.getIssue(id);
+  }
+
   private mapPullRequest(pullRequest: GitHubPullRequest): PullRequest {
     return {
       id: String(pullRequest.number),
@@ -586,6 +606,7 @@ export class GitHubProvider extends CliProvider {
       ...this.mapIssue(issue),
       labels: (issue.labels ?? []).map((label) => label.name),
       assignees: (issue.assignees ?? []).map((assignee) => assignee.login),
+      capabilities: { canChangeStatus: this.capabilities.issueMutations },
     };
   }
 }
@@ -674,7 +695,7 @@ export class AzureProvider extends CliProvider {
     pipelineLogs: true,
     pipelineControls: true,
     issues: true,
-    issueMutations: false,
+    issueMutations: true,
   };
 
   constructor(
@@ -726,10 +747,6 @@ export class AzureProvider extends CliProvider {
       id,
       "--organization",
       `https://dev.azure.com/${this.organization}`,
-      "--project",
-      this.project,
-      "--repository",
-      this.repository,
       "--output",
       "json",
     ]);
@@ -981,13 +998,11 @@ export class AzureProvider extends CliProvider {
       "boards",
       "query",
       "--wiql",
-      "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project ORDER BY [System.ChangedDate] DESC",
+      "SELECT TOP 30 [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project ORDER BY [System.ChangedDate] DESC",
       "--organization",
       `https://dev.azure.com/${this.organization}`,
       "--project",
       this.project,
-      "--top",
-      "30",
       "--output",
       "json",
     ];
@@ -1015,6 +1030,27 @@ export class AzureProvider extends CliProvider {
       "json",
     ]);
     return this.mapIssueDetails(item);
+  }
+
+  async updateIssueStatus(id: string, status: IssueStatus): Promise<IssueDetails> {
+    const state = status === "open" ? "Active" : status === "closed" ? "Closed" : undefined;
+    if (!state) throw new Error("Azure work item status must be open or closed");
+    await runCommand("az", [
+      "boards",
+      "work-item",
+      "update",
+      "--id",
+      id,
+      "--state",
+      state,
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--project",
+      this.project,
+      "--output",
+      "none",
+    ]);
+    return this.getIssue(id);
   }
 
   async getPipeline(id: string): Promise<PipelineDetails> {
@@ -1226,6 +1262,7 @@ export class AzureProvider extends CliProvider {
         ? fields["System.Tags"].split(";").map((tag) => tag.trim()).filter(Boolean)
         : [],
       assignees: assignedTo ? [String(assignedTo)] : [],
+      capabilities: { canChangeStatus: this.capabilities.issueMutations },
     };
   }
 
