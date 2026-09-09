@@ -648,6 +648,7 @@ export async function runApp(): Promise<void> {
       footerText.content = keyHints(appliedTheme, [
         ["j/k", "navigate"],
         ["h/l", "change pane"],
+        ["r", "refresh"],
         ["Enter", "select"],
         ["Tab", "switch tabs"],
         ["?", "keybindings"],
@@ -1088,6 +1089,11 @@ export async function runApp(): Promise<void> {
       return;
     }
     if (state.activeTab === 2 && !state.promptActive && !state.keybindingsActive && !state.configEditorActive) {
+      if (key.name === "r") {
+        key.preventDefault();
+        collaborationPanel.retryCurrentResource();
+        return;
+      }
       if (key.name === "l") {
         key.preventDefault();
         collaborationPanel.focusNext();

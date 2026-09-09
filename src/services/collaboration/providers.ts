@@ -179,6 +179,20 @@ type GitHubWorkflowRunsResponse = {
   workflow_runs: GitHubWorkflowRun[];
 };
 
+type GitHubIssue = {
+  number: number;
+  title: string;
+  body: string | null;
+  state: "open" | "closed";
+  user: { login: string };
+  updated_at: string;
+  created_at: string;
+  html_url: string;
+  labels?: Array<{ name: string }>;
+  assignees?: Array<{ login: string }>;
+  pull_request?: unknown;
+};
+
 type GitHubJob = {
   id: number;
   name: string;
@@ -202,7 +216,7 @@ export class GitHubProvider extends CliProvider {
     pipelineJobs: true,
     pipelineLogs: true,
     pipelineControls: true,
-    issues: false,
+    issues: true,
     issueMutations: false,
   };
 
@@ -457,6 +471,31 @@ export class GitHubProvider extends CliProvider {
     return unsupported("Resuming GitHub Actions runs");
   }
 
+  async listIssues(query: CollaborationQuery): Promise<CollaborationPage<Issue>> {
+    const page = Math.max(1, Number(query.cursor ?? "1") || 1);
+    const params = new URLSearchParams({ state: "all", per_page: "30", page: String(page) });
+    const items = await runJsonCommand<GitHubIssue[]>("gh", [
+      "api",
+      `repos/${this.owner}/${this.repository}/issues?${params}`,
+    ]);
+    const issues = items
+      .filter((issue) => !issue.pull_request)
+      .filter((issue) => !query.search || issue.title.toLowerCase().includes(query.search.toLowerCase()));
+    return {
+      items: issues.map((issue) => this.mapIssue(issue)),
+      hasNextPage: items.length === 30,
+      nextCursor: String(page + 1),
+    };
+  }
+
+  async getIssue(id: string): Promise<IssueDetails> {
+    const issue = await runJsonCommand<GitHubIssue>("gh", [
+      "api",
+      `repos/${this.owner}/${this.repository}/issues/${id}`,
+    ]);
+    return this.mapIssueDetails(issue);
+  }
+
   private mapPullRequest(pullRequest: GitHubPullRequest): PullRequest {
     return {
       id: String(pullRequest.number),
@@ -528,6 +567,27 @@ export class GitHubProvider extends CliProvider {
       url: job.html_url,
     };
   }
+
+  private mapIssue(issue: GitHubIssue): Issue {
+    return {
+      id: String(issue.number),
+      number: issue.number,
+      title: issue.title,
+      description: issue.body ?? undefined,
+      status: issue.state,
+      author: issue.user.login,
+      updatedAt: issue.updated_at,
+      url: issue.html_url,
+    };
+  }
+
+  private mapIssueDetails(issue: GitHubIssue): IssueDetails {
+    return {
+      ...this.mapIssue(issue),
+      labels: (issue.labels ?? []).map((label) => label.name),
+      assignees: (issue.assignees ?? []).map((assignee) => assignee.login),
+    };
+  }
 }
 
 type AzurePullRequest = {
@@ -594,6 +654,12 @@ type AzureTimelineRecord = {
   url?: string;
 };
 
+type AzureWorkItem = {
+  id: number;
+  fields?: Record<string, unknown>;
+  url?: string;
+};
+
 export class AzureProvider extends CliProvider {
   readonly id = "azure" as const;
   readonly capabilities: CollaborationProviderCapabilities = {
@@ -607,7 +673,7 @@ export class AzureProvider extends CliProvider {
     pipelineJobs: true,
     pipelineLogs: true,
     pipelineControls: true,
-    issues: false,
+    issues: true,
     issueMutations: false,
   };
 
@@ -910,6 +976,47 @@ export class AzureProvider extends CliProvider {
     };
   }
 
+  async listIssues(query: CollaborationQuery): Promise<CollaborationPage<Issue>> {
+    const args = [
+      "boards",
+      "query",
+      "--wiql",
+      "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project ORDER BY [System.ChangedDate] DESC",
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--project",
+      this.project,
+      "--top",
+      "30",
+      "--output",
+      "json",
+    ];
+    const items = await runJsonCommand<AzureWorkItem[]>("az", args);
+    return {
+      items: items
+        .filter((item) => !query.search || this.mapIssue(item).title.toLowerCase().includes(query.search.toLowerCase()))
+        .map((item) => this.mapIssue(item)),
+      hasNextPage: false,
+    };
+  }
+
+  async getIssue(id: string): Promise<IssueDetails> {
+    const item = await runJsonCommand<AzureWorkItem>("az", [
+      "boards",
+      "work-item",
+      "show",
+      "--id",
+      id,
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--project",
+      this.project,
+      "--output",
+      "json",
+    ]);
+    return this.mapIssueDetails(item);
+  }
+
   async getPipeline(id: string): Promise<PipelineDetails> {
     const run = await runJsonCommand<AzurePipelineRun>("az", [
       "pipelines",
@@ -1087,6 +1194,38 @@ export class AzureProvider extends CliProvider {
       startedAt: run.startTime ?? run.createdDate ?? run.queueTime,
       finishedAt: run.finishTime ?? run.finishedDate ?? undefined,
       url: run.url ?? "",
+    };
+  }
+
+  private mapIssue(item: AzureWorkItem): Issue {
+    const fields = item.fields ?? {};
+    const title = String(fields["System.Title"] ?? `Work item ${item.id}`);
+    const state = String(fields["System.State"] ?? "").toLowerCase();
+    return {
+      id: String(item.id),
+      number: item.id,
+      title,
+      description: typeof fields["System.Description"] === "string"
+        ? fields["System.Description"]
+        : undefined,
+      status: ["new", "active", "in progress", "to do"].includes(state) ? "open"
+        : ["closed", "done", "resolved", "removed"].includes(state) ? "closed"
+          : "unknown",
+      author: String(fields["System.CreatedBy"] ?? "Unknown"),
+      updatedAt: String(fields["System.ChangedDate"] ?? ""),
+      url: item.url ?? "",
+    };
+  }
+
+  private mapIssueDetails(item: AzureWorkItem): IssueDetails {
+    const fields = item.fields ?? {};
+    const assignedTo = fields["System.AssignedTo"];
+    return {
+      ...this.mapIssue(item),
+      labels: typeof fields["System.Tags"] === "string"
+        ? fields["System.Tags"].split(";").map((tag) => tag.trim()).filter(Boolean)
+        : [],
+      assignees: assignedTo ? [String(assignedTo)] : [],
     };
   }
 

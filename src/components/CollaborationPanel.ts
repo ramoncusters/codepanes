@@ -18,6 +18,8 @@ import type {
   PullRequestCommentInput,
   PullRequestDetails,
   PullRequestDiff,
+  Issue,
+  IssueDetails,
 } from "../services/collaboration/types.js";
 import { isAuthenticationError } from "../services/collaboration/providers.js";
 
@@ -78,6 +80,7 @@ export class CollaborationPanel {
   readonly resourceSelect: SelectRenderable;
   private readonly pullRequestSelect: SelectRenderable;
   private readonly pipelineSelect: SelectRenderable;
+  private readonly issueSelect: SelectRenderable;
   private readonly pipelineJobSelect: SelectRenderable;
   private readonly pipelineActionSelect: SelectRenderable;
   private readonly diffModeSelect: SelectRenderable;
@@ -96,11 +99,15 @@ export class CollaborationPanel {
   private selectedPullRequestDetails: PullRequestDetails | undefined;
   private selectedPipeline: Pipeline | undefined;
   private selectedPipelineDetails: PipelineDetails | undefined;
+  private selectedIssue: Issue | undefined;
+  private selectedIssueDetails: IssueDetails | undefined;
   private pipelineJobs: PipelineJob[] = [];
   private selectedComment: PullRequestComment | undefined;
   private comments: PullRequestComment[] = [];
   private selectedResourceIndex = 0;
   private pullRequests: PullRequest[] = [];
+  private resourceLoadId = 0;
+  private readonly loadedResources = new Set<number>();
   private readonly collapsedPullRequestGroups = new Set<PullRequestGroupStatus>([
     "draft",
     "merged",
@@ -110,6 +117,7 @@ export class CollaborationPanel {
     | "resources"
     | "pull-requests"
     | "pipelines"
+    | "issues"
     | "pipeline-jobs"
     | "pipeline-actions"
     | "comments"
@@ -209,6 +217,14 @@ export class CollaborationPanel {
       showDescription: true,
       itemSpacing: 1,
     });
+    this.issueSelect = new SelectRenderable(renderer, {
+      width: "100%",
+      flexGrow: 1,
+      visible: false,
+      options: [],
+      showDescription: true,
+      itemSpacing: 1,
+    });
     this.pipelineJobSelect = new SelectRenderable(renderer, {
       width: "100%",
       height: 8,
@@ -257,6 +273,7 @@ export class CollaborationPanel {
     this.detailPanel.add(this.detailTitle);
     this.detailPanel.add(this.pullRequestSelect);
     this.detailPanel.add(this.pipelineSelect);
+    this.detailPanel.add(this.issueSelect);
     this.detailPanel.add(this.detailText);
     this.detailPanel.add(this.pipelineJobSelect);
     this.detailPanel.add(this.pipelineActionSelect);
@@ -278,6 +295,10 @@ export class CollaborationPanel {
     this.pipelineSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       const pipeline = this.pipelineSelect.options[index]?.value as Pipeline | undefined;
       if (pipeline) void this.showPipeline(pipeline);
+    });
+    this.issueSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
+      const issue = this.issueSelect.options[index]?.value as Issue | undefined;
+      if (issue) void this.showIssue(issue);
     });
     this.pipelineJobSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       const job = this.pipelineJobs[index];
@@ -357,6 +378,9 @@ export class CollaborationPanel {
     } else if (this.focusedSection === "resources" && this.pipelineSelect.visible) {
       this.focusedSection = "pipelines";
       this.pipelineSelect.focus();
+    } else if (this.focusedSection === "resources" && this.issueSelect.visible) {
+      this.focusedSection = "issues";
+      this.issueSelect.focus();
     } else if (this.focusedSection === "pipelines" && this.pipelineJobSelect.visible) {
       this.focusedSection = "pipeline-jobs";
       this.pipelineJobSelect.focus();
@@ -408,6 +432,8 @@ export class CollaborationPanel {
       this.pullRequestSelect.focus();
     } else if (this.focusedSection === "pipelines") {
       this.focusResource();
+    } else if (this.focusedSection === "issues") {
+      this.focusResource();
     } else if (this.focusedSection === "pull-requests") {
       this.focusResource();
     } else {
@@ -416,10 +442,19 @@ export class CollaborationPanel {
   }
 
   retryCurrentResource(): void {
-    void this.showResource(resources[this.selectedResourceIndex]?.name ?? "Pull requests", this.selectedResourceIndex);
+    void this.showResource(
+      resources[this.selectedResourceIndex]?.name ?? "Pull requests",
+      this.selectedResourceIndex,
+      true,
+    );
   }
 
   activateSelectedPullRequest(): void {
+    if (this.selectedResourceIndex === 2) {
+      const issue = this.issueSelect.options[this.issueSelect.getSelectedIndex()]?.value as Issue | undefined;
+      if (issue) void this.showIssue(issue);
+      return;
+    }
     this.activatePullRequestOption(this.pullRequestSelect.getSelectedIndex());
   }
 
@@ -510,6 +545,16 @@ export class CollaborationPanel {
       select.descriptionColor = theme.muted;
       select.selectedDescriptionColor = theme.text;
     }
+    for (const select of [this.issueSelect]) {
+      select.backgroundColor = theme.panelBackground;
+      select.focusedBackgroundColor = theme.focusedBackground;
+      select.selectedBackgroundColor = theme.focusedBackground;
+      select.textColor = theme.text;
+      select.focusedTextColor = theme.text;
+      select.selectedTextColor = theme.text;
+      select.descriptionColor = theme.muted;
+      select.selectedDescriptionColor = theme.text;
+    }
     this.diffModeSelect.backgroundColor = theme.panelBackground;
     this.diffModeSelect.focusedBackgroundColor = theme.focusedBackground;
     this.diffModeSelect.selectedBackgroundColor = theme.focusedBackground;
@@ -531,11 +576,13 @@ export class CollaborationPanel {
     this.pipelineLogText.fg = theme.muted;
   }
 
-  private async showResource(name: string, index: number): Promise<void> {
+  private async showResource(name: string, index: number, force = false): Promise<void> {
+    const loadId = ++this.resourceLoadId;
     this.selectedResourceIndex = index;
     this.detailTitle.content = name;
     this.pullRequestSelect.visible = false;
     this.pipelineSelect.visible = false;
+    this.issueSelect.visible = false;
     this.pipelineJobSelect.visible = false;
     this.pipelineActionSelect.visible = false;
     this.commentSelect.visible = false;
@@ -548,6 +595,8 @@ export class CollaborationPanel {
     this.selectedPullRequestDetails = undefined;
     this.selectedPipeline = undefined;
     this.selectedPipelineDetails = undefined;
+    this.selectedIssue = undefined;
+    this.selectedIssueDetails = undefined;
     this.pipelineJobs = [];
     this.selectedComment = undefined;
     this.comments = [];
@@ -560,9 +609,18 @@ export class CollaborationPanel {
         this.detailText.content = `Pipelines are not available for ${this.provider.id}.`;
         return;
       }
+      if (!force && this.loadedResources.has(index)) {
+        this.pipelineSelect.visible = true;
+        this.detailText.content = this.pipelineSelect.options.length > 0
+          ? "Select a pipeline run to view stages, jobs, and logs."
+          : "No pipeline runs found.";
+        return;
+      }
       this.detailText.content = "Loading pipeline runs...";
       try {
         const page = await this.provider.listPipelines({});
+        if (loadId !== this.resourceLoadId) return;
+        this.loadedResources.add(index);
         this.pipelineSelect.options = page.items.map((pipeline) => ({
           name: `${pipeline.status}  ${pipeline.name}`,
           description: `${pipeline.branch ?? "unknown branch"} · ${pipeline.commit?.slice(0, 8) ?? "no commit"}`,
@@ -573,10 +631,51 @@ export class CollaborationPanel {
           ? "Select a pipeline run to view stages, jobs, and logs."
           : "No pipeline runs found.";
       } catch (error) {
+        if (loadId !== this.resourceLoadId) return;
         const authenticationError = isAuthenticationError(error);
         this.detailText.content = authenticationError
           ? `Authentication required for ${this.provider.id}.`
           : `Unable to load pipelines: ${String(error)}`;
+        if (authenticationError) this.onAuthenticationRequired(this.provider.id);
+      }
+      return;
+    }
+    if (index === 2) {
+      if (!this.provider) {
+        this.detailText.content = "No supported GitHub or Azure remote was detected.";
+        return;
+      }
+      if (!this.provider.capabilities.issues) {
+        this.detailText.content = `Issues / work items are not available for ${this.provider.id}.`;
+        return;
+      }
+      if (!force && this.loadedResources.has(index)) {
+        this.issueSelect.visible = true;
+        this.detailText.content = this.issueSelect.options.length > 0
+          ? "Select an issue or work item to view its details."
+          : "No issues or work items found.";
+        return;
+      }
+      this.detailText.content = "Loading issues / work items...";
+      try {
+        const page = await this.provider.listIssues({});
+        if (loadId !== this.resourceLoadId) return;
+        this.loadedResources.add(index);
+        this.issueSelect.options = page.items.map((issue) => ({
+          name: `#${issue.number}  ${issue.title}`,
+          description: `${issue.status} · ${issue.author}`,
+          value: issue,
+        }));
+        this.issueSelect.visible = true;
+        this.detailText.content = page.items.length > 0
+          ? "Select an issue or work item to view its details."
+          : "No issues or work items found.";
+      } catch (error) {
+        if (loadId !== this.resourceLoadId) return;
+        const authenticationError = isAuthenticationError(error);
+        this.detailText.content = authenticationError
+          ? `Authentication required for ${this.provider.id}.`
+          : `Unable to load issues / work items: ${String(error)}`;
         if (authenticationError) this.onAuthenticationRequired(this.provider.id);
       }
       return;
@@ -591,9 +690,19 @@ export class CollaborationPanel {
       this.detailText.content = "No supported GitHub or Azure remote was detected.";
       return;
     }
+    if (!force && this.loadedResources.has(index)) {
+      this.renderPullRequestGroups();
+      this.pullRequestSelect.visible = true;
+      this.detailText.content = this.pullRequestSelect.options.length > 0
+        ? "Select a pull request to view its details."
+        : "No pull requests found.";
+      return;
+    }
     this.detailText.content = "Loading pull requests...";
     try {
       const page = await this.provider.listPullRequests({});
+      if (loadId !== this.resourceLoadId) return;
+      this.loadedResources.add(index);
       this.pullRequests = page.items.filter((pullRequest) => pullRequest.status !== "unknown");
       this.renderPullRequestGroups();
       this.pullRequestSelect.visible = true;
@@ -601,6 +710,7 @@ export class CollaborationPanel {
         ? "Select a pull request to view its details."
         : "No pull requests found.";
     } catch (error) {
+      if (loadId !== this.resourceLoadId) return;
       this.detailText.content = isAuthenticationError(error)
         ? `Authentication required for ${this.provider.id}.`
         : `Unable to load pull requests: ${String(error)}`;
@@ -867,5 +977,33 @@ export class CollaborationPanel {
       lines.push("", "Limitations:", ...details.capabilities.limitations.map((limitation) => `- ${limitation}`));
     }
     return lines.join("\n");
+  }
+
+  private async showIssue(issue: Issue): Promise<void> {
+    if (!this.provider) return;
+    const loadId = this.resourceLoadId;
+    this.selectedIssue = issue;
+    this.detailText.content = "Loading issue / work item details...";
+    try {
+      const details = await this.provider.getIssue(issue.id);
+      if (loadId !== this.resourceLoadId || this.selectedIssue?.id !== issue.id) return;
+      this.selectedIssueDetails = details;
+      this.detailText.content = [
+        `#${details.number} ${details.title}`,
+        `${details.status} · ${details.author}`,
+        details.updatedAt ? `updated ${details.updatedAt}` : "update time unavailable",
+        details.assignees.length > 0 ? `Assignees: ${details.assignees.join(", ")}` : "Unassigned",
+        details.labels.length > 0 ? `Labels: ${details.labels.join(", ")}` : "No labels",
+        "",
+        details.description ?? "No description.",
+      ].join("\n");
+    } catch (error) {
+      if (loadId !== this.resourceLoadId || this.selectedIssue?.id !== issue.id) return;
+      const authenticationError = isAuthenticationError(error);
+      this.detailText.content = authenticationError
+        ? `Authentication required for ${this.provider.id}.`
+        : `Unable to load issue / work item details: ${String(error)}`;
+      if (authenticationError) this.onAuthenticationRequired(this.provider.id);
+    }
   }
 }
