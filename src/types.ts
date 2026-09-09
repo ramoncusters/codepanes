@@ -44,6 +44,7 @@ export type Config = {
       keybindings?: TabKeybindings;
       postCreateActions?: string[];
       actions?: ProjectAction[];
+      pipelines?: string[];
     }
   >;
 };

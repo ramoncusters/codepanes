@@ -49,6 +49,11 @@ configuration does not require an absolute path or a package manager. For a
 bare repository ending in `.git`, the `.git` suffix is removed from the
 project name.
 
+Pipeline runs are shown for the current project by default. To limit the
+Collaboration tab to selected pipeline names, add a project-level `pipelines`
+array, for example `"pipelines": ["CI", "Deploy"]`. Press `r` in the
+Collaboration tab to refresh the list after changing the configuration.
+
 Post-create actions use `sh` by default and run in interactive mode so the
 configured shell can load its startup configuration. Set `shell` globally, or
 override it for an individual project, to use another shell such as `zsh`:
@@ -95,6 +100,7 @@ Repository-specific commands can run after creating a worktree:
         "Actions": {}
       },
       "postCreateActions": ["npm install"],
+      "pipelines": ["CI", "Deploy"],
       "actions": [
         { "name": "Dev server", "command": "npm run dev", "persistent": true },
         { "name": "Tests", "command": "npm test" }

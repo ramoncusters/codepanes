@@ -134,6 +134,7 @@ export async function runApp(): Promise<void> {
     renderer,
     terminalBackground,
     collaborationProvider,
+    projectConfig.pipelines,
     (provider) => openAuthenticationPrompt(provider),
     (request) => {
       pendingCollaborationPrompt = request;

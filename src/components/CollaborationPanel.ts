@@ -95,6 +95,7 @@ export class CollaborationPanel {
   private readonly renderer: CliRenderer;
   private theme: Theme;
   private readonly provider: CollaborationProvider | undefined;
+  private readonly pipelineNames: Set<string>;
   private selectedPullRequest: PullRequest | undefined;
   private selectedPullRequestDetails: PullRequestDetails | undefined;
   private selectedPipeline: Pipeline | undefined;
@@ -137,11 +138,13 @@ export class CollaborationPanel {
     renderer: CliRenderer,
     backgroundColor: string,
     provider?: CollaborationProvider,
+    pipelineNames: string[] = [],
     onAuthenticationRequired: (provider: "github" | "azure") => void = () => {},
     onPromptRequested: (request: CollaborationPromptRequest) => void = () => {},
   ) {
     this.renderer = renderer;
     this.provider = provider;
+    this.pipelineNames = new Set(pipelineNames.map((name) => name.trim()).filter(Boolean));
     this.onAuthenticationRequired = onAuthenticationRequired;
     this.onPromptRequested = onPromptRequested;
     this.theme = {
@@ -621,13 +624,16 @@ export class CollaborationPanel {
         const page = await this.provider.listPipelines({});
         if (loadId !== this.resourceLoadId) return;
         this.loadedResources.add(index);
-        this.pipelineSelect.options = page.items.map((pipeline) => ({
+        const pipelines = this.pipelineNames.size === 0
+          ? page.items
+          : page.items.filter((pipeline) => this.pipelineNames.has(pipeline.name));
+        this.pipelineSelect.options = pipelines.map((pipeline) => ({
           name: `${pipeline.status}  ${pipeline.name}`,
           description: `${pipeline.branch ?? "unknown branch"} · ${pipeline.commit?.slice(0, 8) ?? "no commit"}`,
           value: pipeline,
         }));
         this.pipelineSelect.visible = true;
-        this.detailText.content = page.items.length > 0
+        this.detailText.content = pipelines.length > 0
           ? "Select a pipeline run to view stages, jobs, and logs."
           : "No pipeline runs found.";
       } catch (error) {
