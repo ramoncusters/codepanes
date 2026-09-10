@@ -539,8 +539,8 @@ export class CollaborationPanel {
       : undefined;
     if (branch === this.activeBranch) return;
     this.activeBranch = branch;
-    this.loadedResources.clear();
-    if (!this.resourcePickerVisible) {
+    this.loadedResources.delete(1);
+    if (!this.resourcePickerVisible && this.selectedResourceIndex === 1) {
       void this.showResource(
         resources[this.selectedResourceIndex]?.name ?? "Pull requests",
         this.selectedResourceIndex,
@@ -1005,7 +1005,7 @@ export class CollaborationPanel {
     }
     this.detailText.content = "Loading pull requests...";
     try {
-      const page = await this.provider.listPullRequests({ branch: this.activeBranch });
+      const page = await this.provider.listPullRequests({});
       if (loadId !== this.resourceLoadId) return;
       this.loadedResources.add(index);
       this.pullRequests = page.items.filter((pullRequest) => pullRequest.status !== "unknown");
