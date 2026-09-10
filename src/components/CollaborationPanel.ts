@@ -12,6 +12,7 @@ import type {
   Pipeline,
   PipelineDetails,
   PipelineJob,
+  PipelineStage,
   PullRequest,
   PullRequestAction,
   PullRequestComment,
@@ -40,6 +41,9 @@ type PullRequestGroupStatus = "open" | "draft" | "merged" | "closed";
 type PullRequestGroupOption =
   | { kind: "group"; status: PullRequestGroupStatus }
   | PullRequest;
+type PipelineTreeOption =
+  | { kind: "stage"; stage: PipelineStage }
+  | { kind: "job"; job: PipelineJob };
 
 export type CollaborationPromptRequest =
   | { kind: "comment"; pullRequest: PullRequest; commentType: "file" | "line" }
@@ -127,6 +131,7 @@ export class CollaborationPanel {
   private selectedIssue: Issue | undefined;
   private selectedIssueDetails: IssueDetails | undefined;
   private pipelineJobs: PipelineJob[] = [];
+  private pipelineTreeOptions: PipelineTreeOption[] = [];
   private selectedComment: PullRequestComment | undefined;
   private comments: PullRequestComment[] = [];
   private selectedResourceIndex = 0;
@@ -384,8 +389,8 @@ export class CollaborationPanel {
       if (issue) void this.showIssue(issue);
     });
     this.pipelineJobSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
-      const job = this.pipelineJobs[index];
-      if (job) void this.showPipelineJob(job);
+      const item = this.pipelineTreeOptions[index];
+      if (item?.kind === "job") void this.showPipelineJob(item.job);
     });
     this.pipelineActionSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       const action = this.pipelineActionSelect.options[index]?.value as PipelineAction | undefined;
@@ -906,6 +911,7 @@ export class CollaborationPanel {
     this.selectedIssue = undefined;
     this.selectedIssueDetails = undefined;
     this.pipelineJobs = [];
+    this.pipelineTreeOptions = [];
     this.selectedComment = undefined;
     this.comments = [];
     if (index === 1) {
@@ -934,8 +940,8 @@ export class CollaborationPanel {
           ? page.items
           : page.items.filter((pipeline) => this.pipelineNames.has(pipeline.name));
         this.pipelineSelect.options = pipelines.map((pipeline) => ({
-          name: `${pipeline.status}  ${pipeline.name}`,
-          description: `${pipeline.branch ?? "unknown branch"} · ${pipeline.commit?.slice(0, 8) ?? "no commit"}`,
+          name: pipeline.name,
+          description: pipeline.status,
           value: pipeline,
         }));
         this.pipelineSelect.visible = true;
@@ -1113,8 +1119,8 @@ export class CollaborationPanel {
           index === pipelineIndex
             ? {
               ...option,
-              name: `${details.status}  ${details.name}`,
-              description: `${details.branch ?? "unknown branch"} · ${details.commit?.slice(0, 8) ?? "no commit"}`,
+              name: details.name,
+              description: details.status,
               value: details,
             }
             : option);
@@ -1122,11 +1128,34 @@ export class CollaborationPanel {
       }
       this.pipelineJobs = details.jobs;
       this.detailText.content = this.renderPipelineSummary(details);
-      this.pipelineJobSelect.options = details.jobs.map((job) => ({
-        name: `${job.status}  ${job.name}`,
-        description: job.logAvailable ? "log available · select to view" : "logs unavailable for this job",
-        value: job,
-      }));
+      this.pipelineTreeOptions = details.stages.length > 0
+        ? details.stages.flatMap((stage) => [
+          { kind: "stage" as const, stage },
+          ...stage.jobs.map((job) => ({ kind: "job" as const, job })),
+        ])
+        : details.jobs.map((job) => ({ kind: "job" as const, job }));
+      this.pipelineJobSelect.options = this.pipelineTreeOptions.map((item) => {
+        if (item.kind === "stage") {
+          const isLastStage = details.stages
+            ? details.stages.indexOf(item.stage) === details.stages.length - 1
+            : false;
+          return {
+            name: `${isLastStage ? "└─" : "├─"} ${item.stage.name}`,
+            description: item.stage.status,
+            value: item,
+          };
+        }
+        const stage = details.stages.find((candidate) => candidate.jobs.some((job) => job.id === item.job.id));
+        const stageIndex = stage ? details.stages.indexOf(stage) : -1;
+        const stageIsLast = stageIndex >= 0 && stageIndex === details.stages.length - 1;
+        const stageJobs = stage?.jobs ?? [];
+        const jobIsLast = stageJobs.length > 0 && stageJobs[stageJobs.length - 1]?.id === item.job.id;
+        return {
+          name: `${details.stages.length > 0 ? (stageIsLast ? "   " : "│  ") : ""}${jobIsLast ? "└─" : "├─"} ${item.job.name}`,
+          description: item.job.status,
+          value: item,
+        };
+      });
       this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows);
       this.pipelineJobSelect.visible = details.jobs.length > 0;
       this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows);
