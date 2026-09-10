@@ -982,8 +982,8 @@ export class CollaborationPanel {
         if (loadId !== this.resourceLoadId) return;
         this.loadedResources.add(index);
         this.issueSelect.options = page.items.map((issue) => ({
-          name: `#${issue.number}  ${issue.title}`,
-          description: `${issue.status} · ${issue.author}`,
+          name: issue.title,
+          description: issue.status,
           value: issue,
         }));
         this.issueSelect.visible = true;

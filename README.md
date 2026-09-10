@@ -60,7 +60,7 @@ and Issues / Work items. Use `Up`/`Down` and `Enter` to choose a resource,
 details, `o` to open the selected item in the browser, and `r` to refresh the
 selected resource. Enter is intentionally inactive for pull requests. Enter on
 a pipeline expands its stages and jobs as a status tree; Enter on an issue or
-work item opens its detail view. Provider actions prompt for confirmation.
+work item expands its details. Provider actions prompt for confirmation.
 GitHub and Azure operations report authentication, permission, rate-limit,
 offline, and network failures separately; sign in with the corresponding CLI
 when authentication is requested.
