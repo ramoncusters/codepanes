@@ -39,6 +39,8 @@ export class ActionsPanel {
   private readonly handleResize = (width: number): void => {
     const stacked = width < 100;
     this.panel.flexDirection = stacked ? "column" : "row";
+    this.panel.border = true;
+    this.panel.paddingTop = stacked ? 4 : 1;
     this.listPanel.flexShrink = stacked ? 0 : 1;
     this.listPanel.minHeight = stacked ? Math.max(6, this.actions.length * 3 + 2) : null;
     this.output.panel.flexShrink = 1;

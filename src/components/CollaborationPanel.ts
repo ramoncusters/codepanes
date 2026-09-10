@@ -22,7 +22,12 @@ import type {
   IssueDetails,
   IssueAction,
 } from "../services/collaboration/types.js";
-import { isAuthenticationError } from "../services/collaboration/providers.js";
+import {
+  collaborationErrorMessage,
+  isAuthenticationError,
+} from "../services/collaboration/providers.js";
+import type { Worktree } from "../types.js";
+import { ListItemRow } from "./ListItemRow.js";
 
 const resources = [
   { name: "Pull requests", description: "Code review and merge requests" },
@@ -88,6 +93,22 @@ export class CollaborationPanel {
   private readonly diffModeSelect: SelectRenderable;
   private readonly commentSelect: SelectRenderable;
   private readonly actionSelect: SelectRenderable;
+  private readonly resourceRowsPanel: BoxRenderable;
+  private readonly pullRequestRowsPanel: BoxRenderable;
+  private readonly pipelineRowsPanel: BoxRenderable;
+  private readonly issueRowsPanel: BoxRenderable;
+  private readonly pipelineJobRowsPanel: BoxRenderable;
+  private readonly pipelineActionRowsPanel: BoxRenderable;
+  private readonly commentRowsPanel: BoxRenderable;
+  private readonly actionRowsPanel: BoxRenderable;
+  private readonly resourceRows: ListItemRow[] = [];
+  private readonly pullRequestRows: ListItemRow[] = [];
+  private readonly pipelineRows: ListItemRow[] = [];
+  private readonly issueRows: ListItemRow[] = [];
+  private readonly pipelineJobRows: ListItemRow[] = [];
+  private readonly pipelineActionRows: ListItemRow[] = [];
+  private readonly commentRows: ListItemRow[] = [];
+  private readonly actionRows: ListItemRow[] = [];
   private readonly listPanel: BoxRenderable;
   private readonly detailPanel: BoxRenderable;
   private readonly detailTitle: TextRenderable;
@@ -111,6 +132,7 @@ export class CollaborationPanel {
   private pullRequests: PullRequest[] = [];
   private resourceLoadId = 0;
   private readonly loadedResources = new Set<number>();
+  private resourcePickerVisible = true;
   private readonly collapsedPullRequestGroups = new Set<PullRequestGroupStatus>([
     "draft",
     "merged",
@@ -127,9 +149,17 @@ export class CollaborationPanel {
     | "actions" = "resources";
   private readonly onAuthenticationRequired: (provider: "github" | "azure") => void;
   private readonly onPromptRequested: (request: CollaborationPromptRequest) => void;
+  private activeBranch: string | undefined;
+  private updateFocusedPaneBorder(): void {
+    this.listPanel.borderColor = this.resourcePickerVisible ? this.theme.accent : this.theme.border;
+    this.detailPanel.borderColor = this.resourcePickerVisible ? this.theme.border : this.theme.accent;
+  }
+
   private readonly handleResize = (): void => {
     const compact = this.renderer.width < 100;
     this.panel.flexDirection = compact ? "column" : "row";
+    this.panel.border = true;
+    this.panel.paddingTop = compact ? 4 : 1;
     this.listPanel.flexBasis = compact ? "auto" : 0;
     this.listPanel.flexGrow = compact ? 0 : 1;
     this.listPanel.minHeight = compact ? 6 : null;
@@ -168,7 +198,8 @@ export class CollaborationPanel {
       paddingTop: 1,
       border: true,
       borderStyle: "rounded",
-      backgroundColor,
+      borderColor: "#2b3c68",
+      backgroundColor: "transparent",
       visible: false,
     });
     this.listPanel = new BoxRenderable(renderer, {
@@ -178,28 +209,42 @@ export class CollaborationPanel {
       padding: 1,
       border: true,
       borderStyle: "rounded",
+      borderColor: "#2b3c68",
       title: "collaboration",
+      titleColor: "#7dd3fc",
+      backgroundColor: "transparent",
     });
     this.resourceSelect = new SelectRenderable(renderer, {
       flexGrow: 1,
       width: "100%",
+      backgroundColor,
+      focusedBackgroundColor: backgroundColor,
       options: resources.map((resource) => ({
         name: resource.name,
         description: resource.description,
         value: resource.name,
       })),
       showDescription: true,
-      itemSpacing: 1,
+      showSelectionIndicator: true,
       wrapSelection: true,
+      selectedBackgroundColor: "#18264a",
+      focusedTextColor: "#ffffff",
+      selectedTextColor: "#ffffff",
+      descriptionColor: "#aab7d8",
+      selectedDescriptionColor: "#ffffff",
     });
     this.detailPanel = new BoxRenderable(renderer, {
       flexGrow: 1,
       flexBasis: 0,
       flexDirection: "column",
-      padding: 2,
+      padding: 1,
       border: true,
       borderStyle: "rounded",
+      borderColor: "#2b3c68",
       title: "details",
+      titleColor: "#7dd3fc",
+      backgroundColor: "transparent",
+      visible: false,
     });
     this.detailTitle = new TextRenderable(renderer, { content: "Collaboration" });
     this.detailText = new TextRenderable(renderer, {
@@ -211,7 +256,7 @@ export class CollaborationPanel {
       visible: false,
       options: [],
       showDescription: true,
-      itemSpacing: 1,
+      showSelectionIndicator: true,
     });
     this.pipelineSelect = new SelectRenderable(renderer, {
       width: "100%",
@@ -219,7 +264,7 @@ export class CollaborationPanel {
       visible: false,
       options: [],
       showDescription: true,
-      itemSpacing: 1,
+      showSelectionIndicator: true,
     });
     this.issueSelect = new SelectRenderable(renderer, {
       width: "100%",
@@ -227,7 +272,7 @@ export class CollaborationPanel {
       visible: false,
       options: [],
       showDescription: true,
-      itemSpacing: 1,
+      showSelectionIndicator: true,
     });
     this.pipelineJobSelect = new SelectRenderable(renderer, {
       width: "100%",
@@ -235,7 +280,7 @@ export class CollaborationPanel {
       visible: false,
       options: [],
       showDescription: true,
-      itemSpacing: 1,
+      showSelectionIndicator: true,
     });
     this.pipelineActionSelect = new SelectRenderable(renderer, {
       width: "100%",
@@ -243,7 +288,7 @@ export class CollaborationPanel {
       visible: false,
       options: [],
       showDescription: true,
-      itemSpacing: 1,
+      showSelectionIndicator: true,
     });
     this.diffModeSelect = new SelectRenderable(renderer, {
       width: "100%",
@@ -262,7 +307,7 @@ export class CollaborationPanel {
       visible: false,
       options: [],
       showDescription: true,
-      itemSpacing: 1,
+      showSelectionIndicator: true,
     });
     this.actionSelect = new SelectRenderable(renderer, {
       width: "100%",
@@ -270,29 +315,62 @@ export class CollaborationPanel {
       visible: false,
       options: [],
       showDescription: true,
-      itemSpacing: 1,
+      showSelectionIndicator: true,
     });
+    this.resourceRowsPanel = this.createRowsPanel();
+    this.pullRequestRowsPanel = this.createRowsPanel();
+    this.pipelineRowsPanel = this.createRowsPanel();
+    this.issueRowsPanel = this.createRowsPanel();
+    this.pipelineJobRowsPanel = this.createRowsPanel();
+    this.pipelineActionRowsPanel = this.createRowsPanel();
+    this.commentRowsPanel = this.createRowsPanel();
+    this.actionRowsPanel = this.createRowsPanel();
     this.diffText = new TextRenderable(renderer, { visible: false, content: "" });
     this.pipelineLogText = new TextRenderable(renderer, { visible: false, content: "" });
     this.detailPanel.add(this.detailTitle);
+    this.detailPanel.add(this.pullRequestRowsPanel);
     this.detailPanel.add(this.pullRequestSelect);
+    this.detailPanel.add(this.pipelineRowsPanel);
     this.detailPanel.add(this.pipelineSelect);
+    this.detailPanel.add(this.issueRowsPanel);
     this.detailPanel.add(this.issueSelect);
     this.detailPanel.add(this.detailText);
+    this.detailPanel.add(this.pipelineJobRowsPanel);
     this.detailPanel.add(this.pipelineJobSelect);
+    this.detailPanel.add(this.pipelineActionRowsPanel);
     this.detailPanel.add(this.pipelineActionSelect);
+    this.detailPanel.add(this.commentRowsPanel);
     this.detailPanel.add(this.commentSelect);
+    this.detailPanel.add(this.actionRowsPanel);
     this.detailPanel.add(this.actionSelect);
     this.detailPanel.add(this.diffModeSelect);
     this.detailPanel.add(this.diffText);
     this.detailPanel.add(this.pipelineLogText);
     this.listPanel.add(this.resourceSelect);
+    this.listPanel.add(this.resourceRowsPanel);
+    this.resourceSelect.visible = false;
     this.panel.add(this.listPanel);
     this.panel.add(this.detailPanel);
     this.resourceSelect.on(SelectRenderableEvents.SELECTION_CHANGED, (index) => {
-      const resource = resources[index];
-      if (resource) void this.showResource(resource.name, index);
+      if (resources[index]) {
+        this.selectedResourceIndex = index;
+        this.syncRows(this.resourceSelect, this.resourceRowsPanel, this.resourceRows);
+      }
     });
+    this.pullRequestSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
+      this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows));
+    this.pipelineSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
+      this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows));
+    this.issueSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
+      this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows));
+    this.pipelineJobSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
+      this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows));
+    this.pipelineActionSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
+      this.syncRows(this.pipelineActionSelect, this.pipelineActionRowsPanel, this.pipelineActionRows));
+    this.commentSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
+      this.syncRows(this.commentSelect, this.commentRowsPanel, this.commentRows));
+    this.actionSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
+      this.syncRows(this.actionSelect, this.actionRowsPanel, this.actionRows));
     this.pullRequestSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       this.activatePullRequestOption(index);
     });
@@ -376,11 +454,116 @@ export class CollaborationPanel {
     renderer.on("resize", this.handleResize);
     this.handleResize();
     this.applyTheme(this.theme);
+    this.syncRows(this.resourceSelect, this.resourceRowsPanel, this.resourceRows);
+  }
+
+  private createRowsPanel(): BoxRenderable {
+    return new BoxRenderable(this.renderer, {
+      width: "100%",
+      flexDirection: "column",
+      gap: 1,
+      visible: false,
+    });
+  }
+
+  private syncRows(
+    select: SelectRenderable,
+    panel: BoxRenderable,
+    rows: ListItemRow[],
+  ): void {
+    const options = select.options;
+    for (let index = rows.length; index < options.length; index += 1) {
+      const option = options[index];
+      const row = new ListItemRow(
+        this.renderer,
+        option?.name ?? "",
+        option?.description ? [option.description] : [],
+        { text: "", color: this.theme.muted },
+        index === select.getSelectedIndex(),
+        this.theme,
+      );
+      rows.push(row);
+      panel.add(row.panel);
+    }
+    for (const [index, row] of rows.entries()) {
+      const option = options[index];
+      row.panel.visible = Boolean(option);
+      if (option) {
+        row.update(
+          option.name,
+          option.description ? [option.description] : [],
+          { text: "", color: this.theme.muted },
+          index === select.getSelectedIndex(),
+        );
+      }
+    }
+    panel.visible = (select === this.resourceSelect ? this.resourcePickerVisible : select.visible)
+      && options.length > 0;
   }
 
   focusResource(): void {
     this.focusedSection = "resources";
+    if (this.resourcePickerVisible) {
+      this.updateFocusedPaneBorder();
+      this.resourceSelect.focus();
+    } else {
+      this.focusCurrentResource();
+    }
+  }
+
+  navigateSelection(delta: number): void {
+    const select = this.focusedSection === "resources"
+      ? this.resourceSelect
+      : this.focusedSection === "pull-requests"
+        ? this.pullRequestSelect
+        : this.focusedSection === "pipelines"
+          ? this.pipelineSelect
+          : this.focusedSection === "issues"
+            ? this.issueSelect
+            : this.focusedSection === "pipeline-jobs"
+              ? this.pipelineJobSelect
+              : this.focusedSection === "pipeline-actions"
+                ? this.pipelineActionSelect
+                : this.focusedSection === "comments"
+                  ? this.commentSelect
+                  : this.actionSelect;
+    if (select.options.length === 0) return;
+    const index = select.getSelectedIndex();
+    const nextIndex = (index + delta + select.options.length) % select.options.length;
+    select.setSelectedIndex(nextIndex);
+  }
+
+  setWorktree(worktree: Worktree | undefined): void {
+    const branch = worktree?.branch && worktree.branch !== "(detached)"
+      ? worktree.branch
+      : undefined;
+    if (branch === this.activeBranch) return;
+    this.activeBranch = branch;
+    this.loadedResources.clear();
+    if (!this.resourcePickerVisible) {
+      void this.showResource(
+        resources[this.selectedResourceIndex]?.name ?? "Pull requests",
+        this.selectedResourceIndex,
+        true,
+      );
+    }
+  }
+
+  enterResourcePicker(): void {
+    this.resourcePickerVisible = true;
+    this.listPanel.visible = true;
+    this.detailPanel.visible = false;
+    this.focusedSection = "resources";
+    this.updateFocusedPaneBorder();
+    this.resourceSelect.setSelectedIndex(this.selectedResourceIndex);
+    this.syncRows(this.resourceSelect, this.resourceRowsPanel, this.resourceRows);
     this.resourceSelect.focus();
+  }
+
+  returnToResourcePicker(): boolean {
+    if (this.resourcePickerVisible) return false;
+    this.enterResourcePicker();
+    return true;
   }
 
   focusNext(): void {
@@ -468,6 +651,13 @@ export class CollaborationPanel {
   }
 
   activateSelectedPullRequest(): void {
+    if (this.resourcePickerVisible) {
+      this.resourcePickerVisible = false;
+      this.listPanel.visible = false;
+      this.detailPanel.visible = true;
+      this.openSelectedResource();
+      return;
+    }
     if (this.selectedResourceIndex === 2) {
       const issue = this.issueSelect.options[this.issueSelect.getSelectedIndex()]?.value as Issue | undefined;
       if (issue) void this.showIssue(issue);
@@ -481,34 +671,65 @@ export class CollaborationPanel {
     this.activatePullRequestOption(this.pullRequestSelect.getSelectedIndex());
   }
 
+  private openSelectedResource(): void {
+    this.focusedSection = this.selectedResourceIndex === 0
+      ? "pull-requests"
+      : this.selectedResourceIndex === 1
+        ? "pipelines"
+        : "issues";
+    void this.showResource(resources[this.selectedResourceIndex]?.name ?? "Pull requests", this.selectedResourceIndex);
+  }
+
+  private focusCurrentResource(): void {
+    this.updateFocusedPaneBorder();
+    if (this.selectedResourceIndex === 0) this.pullRequestSelect.focus();
+    else if (this.selectedResourceIndex === 1) this.pipelineSelect.focus();
+    else this.issueSelect.focus();
+  }
+
   async createPullRequestComment(comment: PullRequestCommentInput): Promise<void> {
     if (!this.provider || !this.selectedPullRequest) return;
-    await this.provider.createPullRequestComment(this.selectedPullRequest.id, comment);
-    await this.loadComments(this.selectedPullRequest);
+    try {
+      await this.provider.createPullRequestComment(this.selectedPullRequest.id, comment);
+      await this.loadComments(this.selectedPullRequest);
+    } catch (error) {
+      this.showActionError("Unable to add pull request comment", error);
+      throw error;
+    }
   }
 
   async updateSelectedCommentStatus(): Promise<void> {
     if (!this.provider || !this.selectedPullRequest || !this.selectedComment) return;
-    await this.provider.updatePullRequestCommentStatus(
-      this.selectedPullRequest.id,
-      this.selectedComment.threadId ?? this.selectedComment.id,
-      "resolved",
-    );
-    await this.loadComments(this.selectedPullRequest);
+    try {
+      await this.provider.updatePullRequestCommentStatus(
+        this.selectedPullRequest.id,
+        this.selectedComment.threadId ?? this.selectedComment.id,
+        "resolved",
+      );
+      await this.loadComments(this.selectedPullRequest);
+    } catch (error) {
+      this.showActionError("Unable to resolve pull request comment", error);
+      throw error;
+    }
   }
 
   async executePullRequestAction(action: PullRequestAction): Promise<void> {
     if (!this.provider || !this.selectedPullRequest) return;
     const id = this.selectedPullRequest.id;
-    const details = action === "merge"
-      ? await this.provider.mergePullRequest(id)
-      : action === "complete"
-        ? await this.provider.completePullRequest(id)
-        : await this.provider.abandonPullRequest(id);
-    this.selectedPullRequest = details;
-    this.selectedPullRequestDetails = details;
-    this.detailText.content = this.renderPullRequestSummary(details);
-    this.updateActionOptions();
+    try {
+      const details = action === "merge"
+        ? await this.provider.mergePullRequest(id)
+        : action === "complete"
+          ? await this.provider.completePullRequest(id)
+          : await this.provider.abandonPullRequest(id);
+      this.selectedPullRequest = details;
+      this.selectedPullRequestDetails = details;
+      this.detailText.content = this.renderPullRequestSummary(details);
+      this.updateActionOptions();
+    } catch (error) {
+      this.showActionError("Unable to update pull request", error);
+      throw error;
+    }
   }
 
   async executeIssueAction(action: IssueAction): Promise<void> {
@@ -526,11 +747,12 @@ export class CollaborationPanel {
           index === issueIndex
             ? { ...option, description: `${details.status} · ${details.author}`, value: details }
             : option);
+        this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows);
       }
       this.renderIssueDetails(details);
       this.updateIssueActionOptions(details);
     } catch (error) {
-      if (isAuthenticationError(error)) this.onAuthenticationRequired(this.provider.id);
+      this.showActionError("Unable to update issue / work item", error);
       throw error;
     }
   }
@@ -552,16 +774,26 @@ export class CollaborationPanel {
       }
       await this.showPipeline(this.selectedPipeline, true);
     } catch (error) {
-      if (isAuthenticationError(error)) this.onAuthenticationRequired(this.provider.id);
+      this.showActionError("Unable to update pipeline", error);
       throw error;
     }
   }
 
+  private showActionError(operation: string, error: unknown): void {
+    if (!this.provider) return;
+    const message = isAuthenticationError(error)
+      ? `Authentication required for ${this.provider.id}.`
+      : `${operation}: ${collaborationErrorMessage(error)}`;
+    this.detailText.content = message;
+    if (isAuthenticationError(error)) this.onAuthenticationRequired(this.provider.id);
+  }
+
   applyTheme(theme: Theme): void {
     this.theme = theme;
-    this.panel.backgroundColor = theme.background;
+    this.panel.backgroundColor = "transparent";
+    this.panel.borderColor = theme.border;
     for (const pane of [this.listPanel, this.detailPanel]) {
-      pane.backgroundColor = theme.panelBackground;
+      pane.backgroundColor = theme.background;
       pane.borderColor = theme.border;
     }
     this.listPanel.titleColor = theme.accent;
@@ -616,8 +848,19 @@ export class CollaborationPanel {
       select.focusedTextColor = theme.text;
       select.selectedTextColor = theme.text;
       select.descriptionColor = theme.muted;
-      select.selectedDescriptionColor = theme.text;
+      select.selectedDescriptionColor = theme.muted;
     }
+    for (const row of [
+      ...this.resourceRows,
+      ...this.pullRequestRows,
+      ...this.pipelineRows,
+      ...this.issueRows,
+      ...this.pipelineJobRows,
+      ...this.pipelineActionRows,
+      ...this.commentRows,
+      ...this.actionRows,
+    ]) row.applyTheme(theme);
+    this.updateFocusedPaneBorder();
     this.detailTitle.fg = theme.accent;
     this.detailText.fg = theme.muted;
     this.pipelineLogText.fg = theme.muted;
@@ -638,6 +881,13 @@ export class CollaborationPanel {
     this.diffText.visible = false;
     this.pipelineLogText.visible = false;
     this.detailText.visible = true;
+    this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows);
+    this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
+    this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows);
+    this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows);
+    this.syncRows(this.pipelineActionSelect, this.pipelineActionRowsPanel, this.pipelineActionRows);
+    this.syncRows(this.commentSelect, this.commentRowsPanel, this.commentRows);
+    this.syncRows(this.actionSelect, this.actionRowsPanel, this.actionRows);
     this.selectedPullRequest = undefined;
     this.selectedPullRequestDetails = undefined;
     this.selectedPipeline = undefined;
@@ -658,6 +908,7 @@ export class CollaborationPanel {
       }
       if (!force && this.loadedResources.has(index)) {
         this.pipelineSelect.visible = true;
+        this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
         this.detailText.content = this.pipelineSelect.options.length > 0
           ? "Select a pipeline run to view stages, jobs, and logs."
           : "No pipeline runs found.";
@@ -665,7 +916,7 @@ export class CollaborationPanel {
       }
       this.detailText.content = "Loading pipeline runs...";
       try {
-        const page = await this.provider.listPipelines({});
+        const page = await this.provider.listPipelines({ branch: this.activeBranch });
         if (loadId !== this.resourceLoadId) return;
         this.loadedResources.add(index);
         const pipelines = this.pipelineNames.size === 0
@@ -677,6 +928,7 @@ export class CollaborationPanel {
           value: pipeline,
         }));
         this.pipelineSelect.visible = true;
+        this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
         this.detailText.content = pipelines.length > 0
           ? "Select a pipeline run to view stages, jobs, and logs."
           : "No pipeline runs found.";
@@ -685,7 +937,7 @@ export class CollaborationPanel {
         const authenticationError = isAuthenticationError(error);
         this.detailText.content = authenticationError
           ? `Authentication required for ${this.provider.id}.`
-          : `Unable to load pipelines: ${String(error)}`;
+          : `Unable to load pipelines: ${collaborationErrorMessage(error)}`;
         if (authenticationError) this.onAuthenticationRequired(this.provider.id);
       }
       return;
@@ -701,6 +953,7 @@ export class CollaborationPanel {
       }
       if (!force && this.loadedResources.has(index)) {
         this.issueSelect.visible = true;
+        this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows);
         this.detailText.content = this.issueSelect.options.length > 0
           ? "Select an issue or work item to view its details."
           : "No issues or work items found.";
@@ -717,6 +970,7 @@ export class CollaborationPanel {
           value: issue,
         }));
         this.issueSelect.visible = true;
+        this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows);
         this.detailText.content = page.items.length > 0
           ? "Select an issue or work item to view its details."
           : "No issues or work items found.";
@@ -725,7 +979,7 @@ export class CollaborationPanel {
         const authenticationError = isAuthenticationError(error);
         this.detailText.content = authenticationError
           ? `Authentication required for ${this.provider.id}.`
-          : `Unable to load issues / work items: ${String(error)}`;
+          : `Unable to load issues / work items: ${collaborationErrorMessage(error)}`;
         if (authenticationError) this.onAuthenticationRequired(this.provider.id);
       }
       return;
@@ -743,6 +997,7 @@ export class CollaborationPanel {
     if (!force && this.loadedResources.has(index)) {
       this.renderPullRequestGroups();
       this.pullRequestSelect.visible = true;
+      this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows);
       this.detailText.content = this.pullRequestSelect.options.length > 0
         ? "Select a pull request to view its details."
         : "No pull requests found.";
@@ -750,12 +1005,13 @@ export class CollaborationPanel {
     }
     this.detailText.content = "Loading pull requests...";
     try {
-      const page = await this.provider.listPullRequests({});
+      const page = await this.provider.listPullRequests({ branch: this.activeBranch });
       if (loadId !== this.resourceLoadId) return;
       this.loadedResources.add(index);
       this.pullRequests = page.items.filter((pullRequest) => pullRequest.status !== "unknown");
       this.renderPullRequestGroups();
       this.pullRequestSelect.visible = true;
+      this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows);
       this.detailText.content = page.items.length > 0
         ? "Select a pull request to view its details."
         : "No pull requests found.";
@@ -763,7 +1019,7 @@ export class CollaborationPanel {
       if (loadId !== this.resourceLoadId) return;
       this.detailText.content = isAuthenticationError(error)
         ? `Authentication required for ${this.provider.id}.`
-        : `Unable to load pull requests: ${String(error)}`;
+        : `Unable to load pull requests: ${collaborationErrorMessage(error)}`;
       if (isAuthenticationError(error)) this.onAuthenticationRequired(this.provider.id);
     }
   }
@@ -791,6 +1047,7 @@ export class CollaborationPanel {
         }
         return options;
       });
+    this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows);
   }
 
   private activatePullRequestOption(index: number): void {
@@ -825,7 +1082,7 @@ export class CollaborationPanel {
     } catch (error) {
       this.detailText.content = isAuthenticationError(error)
         ? `Authentication required for ${this.provider.id}.`
-        : `Unable to load pull request details: ${String(error)}`;
+        : `Unable to load pull request details: ${collaborationErrorMessage(error)}`;
       if (isAuthenticationError(error)) this.onAuthenticationRequired(this.provider.id);
     }
   }
@@ -852,6 +1109,7 @@ export class CollaborationPanel {
               value: details,
             }
             : option);
+        this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
       }
       this.pipelineJobs = details.jobs;
       this.detailText.content = this.renderPipelineSummary(details);
@@ -860,15 +1118,19 @@ export class CollaborationPanel {
         description: job.logAvailable ? "log available · select to view" : "logs unavailable for this job",
         value: job,
       }));
+      this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows);
       this.pipelineJobSelect.visible = details.jobs.length > 0;
+      this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows);
       this.updatePipelineActionOptions(details);
     } catch (error) {
       const authenticationError = isAuthenticationError(error);
       this.detailText.content = authenticationError
         ? `Authentication required for ${this.provider.id}.`
-        : `Unable to load pipeline details: ${String(error)}`;
+        : `Unable to load pipeline details: ${collaborationErrorMessage(error)}`;
       this.pipelineJobSelect.visible = false;
       this.pipelineActionSelect.visible = false;
+      this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows);
+      this.syncRows(this.pipelineActionSelect, this.pipelineActionRowsPanel, this.pipelineActionRows);
       if (authenticationError && !propagateError) this.onAuthenticationRequired(this.provider.id);
       if (propagateError) throw error;
     }
@@ -890,7 +1152,7 @@ export class CollaborationPanel {
       const authenticationError = isAuthenticationError(error);
       this.pipelineLogText.content = authenticationError
         ? `Authentication required for ${this.provider.id}.`
-        : `Unable to load job log: ${String(error)}`;
+        : `Unable to load job log: ${collaborationErrorMessage(error)}`;
       if (authenticationError) this.onAuthenticationRequired(this.provider.id);
     }
   }
@@ -902,7 +1164,7 @@ export class CollaborationPanel {
       const diff = await this.provider.getPullRequestDiff(pullRequest.id);
       this.diffText.content = renderDiff(diff, mode);
     } catch (error) {
-      this.diffText.content = `Unable to load diff: ${String(error)}`;
+      this.diffText.content = `Unable to load diff: ${collaborationErrorMessage(error)}`;
     }
   }
 
@@ -918,13 +1180,16 @@ export class CollaborationPanel {
         description: `${comment.status} · ${comment.author}: ${comment.body}`,
         value: comment,
       }));
+      this.syncRows(this.commentSelect, this.commentRowsPanel, this.commentRows);
       this.commentSelect.visible = this.comments.length > 0;
       this.updateActionOptions();
+      this.syncRows(this.commentSelect, this.commentRowsPanel, this.commentRows);
     } catch (error) {
       this.comments = [];
       this.commentSelect.options = [];
       this.commentSelect.visible = false;
-      this.detailText.content = `${this.renderPullRequestSummary(this.selectedPullRequestDetails)}\n\nUnable to load comments: ${String(error)}`;
+      this.syncRows(this.commentSelect, this.commentRowsPanel, this.commentRows);
+      this.detailText.content = `${this.renderPullRequestSummary(this.selectedPullRequestDetails)}\n\nUnable to load comments: ${collaborationErrorMessage(error)}`;
     }
   }
 
@@ -933,6 +1198,7 @@ export class CollaborationPanel {
     if (!details) {
       this.actionSelect.options = [];
       this.actionSelect.visible = false;
+      this.syncRows(this.actionSelect, this.actionRowsPanel, this.actionRows);
       return;
     }
     const options: Array<{
@@ -964,6 +1230,7 @@ export class CollaborationPanel {
     }
     this.actionSelect.options = options;
     this.actionSelect.visible = true;
+    this.syncRows(this.actionSelect, this.actionRowsPanel, this.actionRows);
   }
 
   private updatePipelineActionOptions(details: PipelineDetails): void {
@@ -991,6 +1258,7 @@ export class CollaborationPanel {
         value: action,
       }));
     this.pipelineActionSelect.visible = this.pipelineActionSelect.options.length > 0;
+    this.syncRows(this.pipelineActionSelect, this.pipelineActionRowsPanel, this.pipelineActionRows);
   }
 
   private renderPullRequestSummary(
@@ -1045,7 +1313,7 @@ export class CollaborationPanel {
       const authenticationError = isAuthenticationError(error);
       this.detailText.content = authenticationError
         ? `Authentication required for ${this.provider.id}.`
-        : `Unable to load issue / work item details: ${String(error)}`;
+        : `Unable to load issue / work item details: ${collaborationErrorMessage(error)}`;
       if (authenticationError) this.onAuthenticationRequired(this.provider.id);
     }
   }
@@ -1066,6 +1334,7 @@ export class CollaborationPanel {
     if (!details.capabilities.canChangeStatus || !["open", "closed"].includes(details.status)) {
       this.actionSelect.options = [];
       this.actionSelect.visible = false;
+      this.syncRows(this.actionSelect, this.actionRowsPanel, this.actionRows);
       return;
     }
     this.actionSelect.options = [{
@@ -1074,5 +1343,6 @@ export class CollaborationPanel {
       value: details.status === "closed" ? "reopen" : "close",
     }];
     this.actionSelect.visible = true;
+    this.syncRows(this.actionSelect, this.actionRowsPanel, this.actionRows);
   }
 }

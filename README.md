@@ -54,6 +54,14 @@ Collaboration tab to selected pipeline names, add a project-level `pipelines`
 array, for example `"pipelines": ["CI", "Deploy"]`. Press `r` in the
 Collaboration tab to refresh the list after changing the configuration.
 
+The Collaboration tab opens with a resource picker for Pull requests, Pipelines,
+and Issues / Work items. Use `Up`/`Down` and `Enter` to choose a resource,
+`Esc` to return to the picker, `h`/`l` to move focus between the list and
+details, and `r` to refresh the selected resource. Provider actions prompt for
+confirmation. GitHub and Azure operations report authentication, permission,
+rate-limit, offline, and network failures separately; sign in with the
+corresponding CLI when authentication is requested.
+
 Post-create actions use `sh` by default and run in interactive mode so the
 configured shell can load its startup configuration. Set `shell` globally, or
 override it for an individual project, to use another shell such as `zsh`:

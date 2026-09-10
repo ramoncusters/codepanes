@@ -152,6 +152,7 @@ export async function runApp(): Promise<void> {
       }
     },
   );
+  collaborationPanel.setWorktree(worktreesPanel.activeWorktree);
   const worktreePanel = worktreesPanel.panel;
   const select = worktreesPanel.select;
   const searchBar = worktreesPanel.searchBar;
@@ -160,13 +161,23 @@ export async function runApp(): Promise<void> {
   const state = createAppState();
   let revertingWorktreeSelection = false;
   const updateWorktreeChip = (worktree: Worktree | undefined): void => {
-    const name = worktree?.name ?? worktree?.branch ?? "-";
-    const label = name.slice(0, 19);
-    const chipWidth = label.length + 2;
+    const name = (worktree?.name ?? worktree?.branch ?? "-").replaceAll(/[\u0000-\u001f\u007f]/g, "");
+    const chipWidth = name.length + 2;
     worktreeChip.panel.width = chipWidth;
     worktreeChip.text.width = chipWidth;
-    worktreeChip.text.content = ` ${label} `;
-    tabs.left = chipWidth + 5;
+    worktreeChip.text.content = ` ${name} `;
+    const tabsFitBesideChip = chipWidth + 5 + tabs.totalWidth() <= renderer.width;
+    tabs.left = tabsFitBesideChip ? chipWidth + 5 : 2;
+    tabs.top = tabsFitBesideChip ? 0 : 1;
+    tabs.paddingTop = tabsFitBesideChip ? 0 : 1;
+    tabs.paddingBottom = 0;
+    tabs.height = tabsFitBesideChip ? 2 : 3;
+    const compact = renderer.width < 100;
+    const panelPaddingTop = compact ? (tabsFitBesideChip ? 2 : 4) : 1;
+    worktreePanel.paddingTop = panelPaddingTop;
+    actionsPanel.panel.paddingTop = panelPaddingTop;
+    collaborationPanel.panel.paddingTop = panelPaddingTop;
+    body.paddingTop = 0;
   };
   const updateTerminalTitle = (worktree: Worktree | undefined): void => {
     const name = (worktree?.name ?? worktree?.branch ?? "-").replaceAll(/[\u0000-\u001f\u007f]/g, "");
@@ -174,6 +185,7 @@ export async function runApp(): Promise<void> {
   };
   actionsPanel.setWorktree(worktreesPanel.selectedTarget());
   updateWorktreeChip(worktreesPanel.activeWorktree);
+  renderer.on("resize", () => updateWorktreeChip(worktreesPanel.activeWorktree));
   updateTerminalTitle(worktreesPanel.activeWorktree);
   const prompt = new Prompt(renderer);
   const promptPanel = prompt.panel;
@@ -257,6 +269,7 @@ export async function runApp(): Promise<void> {
     await worktreesPanel.refresh();
     worktrees = worktreesPanel.items;
     const target = worktreesPanel.selectedTarget();
+    collaborationPanel.setWorktree(worktreesPanel.activeWorktree);
     actionsPanel.setWorktree(worktreesPanel.activeWorktree ?? target);
     updateWorktreeChip(worktreesPanel.activeWorktree ?? target);
     updateTerminalTitle(worktreesPanel.activeWorktree ?? target);
@@ -650,9 +663,9 @@ export async function runApp(): Promise<void> {
       if (!state.keybindingsActive && !state.configEditorActive) collaborationPanel.focusResource();
       footerText.content = keyHints(appliedTheme, [
         ["j/k", "navigate"],
-        ["h/l", "change pane"],
+        ["Enter", "open/select"],
+        ["Esc", "resources"],
         ["r", "refresh"],
-        ["Enter", "select"],
         ["Tab", "switch tabs"],
         ["?", "keybindings"],
         ["Q", "quit"],
@@ -699,6 +712,7 @@ export async function runApp(): Promise<void> {
       return;
     }
     worktreesPanel.setActiveWorktree(target);
+    collaborationPanel.setWorktree(target);
     updateWorktreeChip(target);
     updateTerminalTitle(target);
     actionsPanel.setWorktree(target);
@@ -757,6 +771,7 @@ export async function runApp(): Promise<void> {
         select.setSelectedIndex(pending.index);
         const target = worktreesPanel.selectedTarget();
         worktreesPanel.setActiveWorktree(target);
+        collaborationPanel.setWorktree(target);
         updateWorktreeChip(target);
         updateTerminalTitle(target);
         actionsPanel.setWorktree(target);
@@ -1088,12 +1103,23 @@ export async function runApp(): Promise<void> {
     if (state.activeTab === 1) {
       return;
     }
+    if (state.activeTab === 2 && key.name === "escape") {
+      if (collaborationPanel.returnToResourcePicker()) {
+        key.preventDefault();
+        return;
+      }
+    }
     if (state.activeTab === 2 && key.name === "return") {
       key.preventDefault();
       collaborationPanel.activateSelectedPullRequest();
       return;
     }
     if (state.activeTab === 2 && !state.promptActive && !state.keybindingsActive && !state.configEditorActive) {
+      if (key.name === "j" || key.name === "k") {
+        key.preventDefault();
+        collaborationPanel.navigateSelection(key.name === "j" ? 1 : -1);
+        return;
+      }
       if (key.name === "r") {
         key.preventDefault();
         collaborationPanel.retryCurrentResource();

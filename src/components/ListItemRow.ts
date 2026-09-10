@@ -12,6 +12,10 @@ export class ListItemRow {
   private readonly details: TextRenderable[] = [];
   private readonly statuses: TextRenderable[] = [];
   private theme: Theme;
+  private currentName: string;
+  private currentDetailLines: string[];
+  private currentStatus: ListItemRowStatus | ListItemRowStatus[];
+  private currentSelected: boolean;
 
   constructor(
     renderer: CliRenderer,
@@ -22,6 +26,10 @@ export class ListItemRow {
     theme: Theme,
   ) {
     this.theme = theme;
+    this.currentName = name;
+    this.currentDetailLines = detailLines;
+    this.currentStatus = status;
+    this.currentSelected = selected;
     this.panel = new BoxRenderable(renderer, {
       width: "100%",
       height: Math.max(2, detailLines.length + 1),
@@ -62,6 +70,10 @@ export class ListItemRow {
     status: ListItemRowStatus | ListItemRowStatus[],
     selected: boolean,
   ): void {
+    this.currentName = name;
+    this.currentDetailLines = detailLines;
+    this.currentStatus = status;
+    this.currentSelected = selected;
     this.cursor.content = selected ? "› " : "  ";
     this.details[0].content = name;
     for (const [index, line] of detailLines.entries()) {
@@ -82,5 +94,11 @@ export class ListItemRow {
 
   applyTheme(theme: Theme): void {
     this.theme = theme;
+    this.update(
+      this.currentName,
+      this.currentDetailLines,
+      this.currentStatus,
+      this.currentSelected,
+    );
   }
 }

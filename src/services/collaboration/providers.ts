@@ -28,42 +28,128 @@ const execFileAsync = promisify(execFile);
 const unsupported = (operation: string): Promise<never> =>
   Promise.reject(new Error(`${operation} is not implemented for this provider yet`));
 
+export type CollaborationErrorKind =
+  | "authentication"
+  | "permission"
+  | "rate-limit"
+  | "offline"
+  | "network"
+  | "command"
+  | "unknown";
+
+export class CollaborationError extends Error {
+  readonly kind: CollaborationErrorKind;
+  readonly providerCommand: string;
+  readonly cause: unknown;
+
+  constructor(kind: CollaborationErrorKind, providerCommand: string, message: string, cause?: unknown) {
+    super(message);
+    this.name = "CollaborationError";
+    this.kind = kind;
+    this.providerCommand = providerCommand;
+    this.cause = cause;
+  }
+}
+
 function commandErrorDetail(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   const stderr = "stderr" in error && typeof error.stderr === "string" ? error.stderr.trim() : "";
   return stderr ? `${error.message}: ${stderr}` : error.message;
 }
 
-async function runJsonCommand<T>(command: string, args: string[]): Promise<T> {
-  try {
-    const { stdout } = await execFileAsync(command, args, { maxBuffer: 10 * 1024 * 1024 });
-    return JSON.parse(stdout) as T;
-  } catch (error) {
-    const detail = commandErrorDetail(error);
-    throw new Error(`${command} request failed: ${detail}`);
+function classifyCommandError(error: unknown): CollaborationErrorKind {
+  const message = commandErrorDetail(error);
+  if (/ENOENT|not found|is not recognized/i.test(message)) return "command";
+  if (/authentication|unauthori[sz]ed|not logged in|login required|sign in|status code 401|\bHTTP 401\b|bad credentials|AADSTS|az login/i.test(message)) {
+    return "authentication";
   }
+  if (/forbidden|permission|access denied|requires? .*permission|not allowed|TF401027/i.test(message)) {
+    return "permission";
+  }
+  if (/rate.?limit|too many requests|status code 429|\bHTTP 429\b|secondary rate limit/i.test(message)) {
+    return "rate-limit";
+  }
+  if (/ENETUNREACH|ENETDOWN|ENONET|EHOSTUNREACH|offline|network is unreachable|no internet/i.test(message)) {
+    return "offline";
+  }
+  if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|fetch failed|network error|timed out|TLS|502|503|504/i.test(message)) {
+    return "network";
+  }
+  return "unknown";
+}
+
+function isTransient(kind: CollaborationErrorKind): boolean {
+  return kind === "offline" || kind === "network" || kind === "rate-limit";
+}
+
+function retryDelay(kind: CollaborationErrorKind, attempt: number): number {
+  return kind === "rate-limit" ? 500 * attempt : 250 * attempt;
+}
+
+async function runProviderCommand<T>(
+  command: string,
+  args: string[],
+  maxBuffer: number,
+  parse: (stdout: string) => T,
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      const { stdout } = await execFileAsync(command, args, { maxBuffer });
+      return parse(stdout);
+    } catch (error) {
+      const kind = classifyCommandError(error);
+      if (attempt < 1 && isTransient(kind)) {
+        attempt += 1;
+        await new Promise((resolve) => setTimeout(resolve, retryDelay(kind, attempt)));
+        continue;
+      }
+      const detail = commandErrorDetail(error);
+      throw new CollaborationError(kind, command, `${command} request failed: ${detail}`, error);
+    }
+  }
+}
+
+async function runJsonCommand<T>(command: string, args: string[]): Promise<T> {
+  return runProviderCommand(command, args, 10 * 1024 * 1024, (stdout) => JSON.parse(stdout) as T);
 }
 
 export function isAuthenticationError(error: unknown): boolean {
+  if (error instanceof CollaborationError) return error.kind === "authentication";
   const message = error instanceof Error ? error.message : String(error);
-  return /authentication|unauthori[sz]ed|not logged in|login required|sign in|status code 401|status code 403|\bHTTP 401\b|\bHTTP 403\b|bad credentials|AADSTS|az login/i.test(message);
+  return /authentication|unauthori[sz]ed|not logged in|login required|sign in|status code 401|\bHTTP 401\b|bad credentials|AADSTS|az login/i.test(message);
+}
+
+export function getCollaborationErrorKind(error: unknown): CollaborationErrorKind {
+  return error instanceof CollaborationError ? error.kind : classifyCommandError(error);
+}
+
+export function collaborationErrorMessage(error: unknown): string {
+  const kind = getCollaborationErrorKind(error);
+  switch (kind) {
+    case "authentication":
+      return "Authentication required. Sign in with the provider CLI and try again.";
+    case "permission":
+      return "The provider denied this operation. Check your account permissions and repository access.";
+    case "rate-limit":
+      return "The provider rate limit was reached. Wait a moment and try again.";
+    case "offline":
+      return "The provider is unavailable because this machine appears to be offline.";
+    case "network":
+      return "The provider could not be reached. Check your network connection and try again.";
+    case "command":
+      return "The provider CLI is unavailable. Install it and ensure it is on PATH.";
+    default:
+      return error instanceof Error ? error.message : String(error);
+  }
 }
 
 async function runTextCommand(command: string, args: string[]): Promise<string> {
-  try {
-    const { stdout } = await execFileAsync(command, args, { maxBuffer: 20 * 1024 * 1024 });
-    return stdout;
-  } catch (error) {
-    throw new Error(`${command} request failed: ${commandErrorDetail(error)}`);
-  }
+  return runProviderCommand(command, args, 20 * 1024 * 1024, (stdout) => stdout);
 }
 
 async function runCommand(command: string, args: string[]): Promise<void> {
-  try {
-    await execFileAsync(command, args, { maxBuffer: 10 * 1024 * 1024 });
-  } catch (error) {
-    throw new Error(`${command} request failed: ${commandErrorDetail(error)}`);
-  }
+  await runProviderCommand(command, args, 10 * 1024 * 1024, () => undefined);
 }
 
 abstract class CliProvider implements CollaborationProvider {
@@ -235,6 +321,7 @@ export class GitHubProvider extends CliProvider {
   async listPullRequests(query: CollaborationQuery): Promise<CollaborationPage<PullRequest>> {
     const page = Math.max(1, Number(query.cursor ?? "1") || 1);
     const params = new URLSearchParams({ state: "all", per_page: "30", page: String(page) });
+    if (query.branch) params.set("head", `${this.owner}:${query.branch}`);
     const items = await runJsonCommand<GitHubPullRequest[]>("gh", [
       "api",
       `repos/${this.owner}/${this.repository}/pulls?${params}`,
@@ -720,6 +807,7 @@ export class AzureProvider extends CliProvider {
       this.repository,
       "--status",
       "all",
+      ...(query.branch ? ["--source-branch", query.branch] : []),
       "--top",
       "30",
       "--skip",

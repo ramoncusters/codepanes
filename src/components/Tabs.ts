@@ -69,6 +69,10 @@ export class VariableTabs extends BoxRenderable {
     return tabNames.slice(0, index).reduce((total, name) => total + name.length + 2, 0);
   }
 
+  totalWidth(): number {
+    return this.itemLeft(tabNames.length);
+  }
+
   applyTheme(theme: TabTheme): void {
     this.theme = theme;
     this.renderItems();
