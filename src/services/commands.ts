@@ -47,6 +47,12 @@ export function runDetachedCommand(
   });
 }
 
+export function openExternalUrl(url: string): Promise<void> {
+  const command = process.platform === "win32" ? "cmd.exe" : process.platform === "darwin" ? "open" : "xdg-open";
+  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+  return runDetachedCommand(command, args, process.cwd());
+}
+
 export function runAuthenticationCommand(
   command: string,
   args: string[],

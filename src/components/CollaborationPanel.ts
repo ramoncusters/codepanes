@@ -28,6 +28,7 @@ import {
 } from "../services/collaboration/providers.js";
 import type { Worktree } from "../types.js";
 import { ListItemRow } from "./ListItemRow.js";
+import { openExternalUrl } from "../services/commands.js";
 
 const resources = [
   { name: "Pull requests", description: "Code review and merge requests" },
@@ -663,12 +664,22 @@ export class CollaborationPanel {
       if (issue) void this.showIssue(issue);
       return;
     }
+    if (this.selectedResourceIndex === 0) return;
     if (this.selectedResourceIndex === 1) {
       const pipeline = this.pipelineSelect.options[this.pipelineSelect.getSelectedIndex()]?.value as Pipeline | undefined;
       if (pipeline) void this.showPipeline(pipeline);
       return;
     }
-    this.activatePullRequestOption(this.pullRequestSelect.getSelectedIndex());
+  }
+
+  async openSelectedResourceInBrowser(): Promise<void> {
+    if (this.resourcePickerVisible) return;
+    const option = this.selectedResourceIndex === 0
+      ? this.pullRequestSelect.options[this.pullRequestSelect.getSelectedIndex()]?.value as PullRequest | undefined
+      : this.selectedResourceIndex === 1
+        ? this.pipelineSelect.options[this.pipelineSelect.getSelectedIndex()]?.value as Pipeline | undefined
+        : this.issueSelect.options[this.issueSelect.getSelectedIndex()]?.value as Issue | undefined;
+    if (option?.url) await openExternalUrl(option.url);
   }
 
   private openSelectedResource(): void {
@@ -1040,8 +1051,8 @@ export class CollaborationPanel {
         }];
         if (!collapsed) {
           options.push(...pullRequests.map((pullRequest) => ({
-            name: `  #${pullRequest.number}  ${pullRequest.title}`,
-            description: `  ${pullRequest.sourceBranch} → ${pullRequest.targetBranch}`,
+            name: pullRequest.title,
+            description: pullRequest.status,
             value: pullRequest,
           })));
         }
@@ -1060,9 +1071,7 @@ export class CollaborationPanel {
         this.collapsedPullRequestGroups.add(option.status);
       }
       this.renderPullRequestGroups();
-      return;
     }
-    void this.showPullRequest(option as PullRequest);
   }
 
   private async showPullRequest(pullRequest: PullRequest): Promise<void> {

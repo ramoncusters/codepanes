@@ -1120,6 +1120,13 @@ export async function runApp(): Promise<void> {
         collaborationPanel.navigateSelection(key.name === "j" ? 1 : -1);
         return;
       }
+      if (key.name === "o") {
+        key.preventDefault();
+        void collaborationPanel.openSelectedResourceInBrowser().catch((error: unknown) => {
+          footerText.content = `Unable to open collaboration item: ${String(error)}`;
+        });
+        return;
+      }
       if (key.name === "r") {
         key.preventDefault();
         collaborationPanel.retryCurrentResource();
