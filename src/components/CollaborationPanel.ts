@@ -551,6 +551,12 @@ export class CollaborationPanel {
         );
       }
     }
+    if (select === this.pullRequestSelect) {
+      // Pull requests use the selector's native rows so keyboard navigation and
+      // the provider group headers share one visible list.
+      panel.visible = false;
+      return;
+    }
     panel.visible = (select === this.resourceSelect ? this.resourcePickerVisible : select.visible)
       && options.length > 0;
   }
