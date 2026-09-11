@@ -809,6 +809,7 @@ type AzureIteration = {
   id?: string;
   name?: string;
   path?: string;
+  children?: AzureIteration[];
   attributes?: {
     startDate?: string;
     finishDate?: string;
@@ -1156,7 +1157,7 @@ export class AzureProvider extends CliProvider {
   }
 
   async listIssueIterations(): Promise<CollaborationPage<IssueIteration>> {
-    const response = await runJsonCommand<AzureIteration[] | { value?: AzureIteration[] }>("az", [
+    const response = await runJsonCommand<AzureIteration[] | { value?: AzureIteration[] | AzureIteration }>("az", [
       "boards",
       "iteration",
       "project",
@@ -1168,10 +1169,21 @@ export class AzureProvider extends CliProvider {
       "--output",
       "json",
     ]);
-    const iterations = Array.isArray(response) ? response : response.value;
-    if (!iterations) {
+    const topLevelIterations = Array.isArray(response)
+      ? response
+      : Array.isArray(response.value)
+        ? response.value
+        : response.value && typeof response.value === "object"
+          ? [response.value]
+          : "id" in response && "name" in response && "path" in response
+            ? [response as AzureIteration]
+        : undefined;
+    if (!topLevelIterations) {
       throw new Error("Azure iteration list returned an unexpected response shape");
     }
+    const flattenIterations = (items: AzureIteration[]): AzureIteration[] =>
+      items.flatMap((iteration) => [iteration, ...flattenIterations(iteration.children ?? [])]);
+    const iterations = flattenIterations(topLevelIterations);
     return {
       items: iterations
         .filter((iteration) => iteration.id && iteration.path && iteration.name)
