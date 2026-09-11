@@ -6,7 +6,9 @@ import type {
   CollaborationProviderCapabilities,
   CollaborationQuery,
   Issue,
+  IssueChild,
   IssueDetails,
+  IssueIteration,
   IssueStatus,
   Pipeline,
   PipelineControlCapabilities,
@@ -210,8 +212,16 @@ abstract class CliProvider implements CollaborationProvider {
     return unsupported("Issue listing");
   }
 
+  listIssueIterations(): Promise<CollaborationPage<IssueIteration>> {
+    return unsupported("Issue iteration listing");
+  }
+
   getIssue(_id: string): Promise<IssueDetails> {
     return unsupported("Issue details");
+  }
+
+  getIssueChildren(_id: string): Promise<IssueChild[]> {
+    return unsupported("Issue child listing");
   }
 
   updateIssueStatus(_id: string, _status: IssueStatus): Promise<IssueDetails> {
@@ -309,6 +319,8 @@ export class GitHubProvider extends CliProvider {
     pipelineControls: true,
     issues: true,
     issueMutations: true,
+    issueIterations: false,
+    issueChildren: false,
   };
 
   constructor(
@@ -588,6 +600,17 @@ export class GitHubProvider extends CliProvider {
     return this.mapIssueDetails(issue);
   }
 
+  async listIssueIterations(): Promise<CollaborationPage<IssueIteration>> {
+    return {
+      items: [],
+      hasNextPage: false,
+    };
+  }
+
+  async getIssueChildren(_id: string): Promise<IssueChild[]> {
+    return [];
+  }
+
   async updateIssueStatus(id: string, status: IssueStatus): Promise<IssueDetails> {
     if (status !== "open" && status !== "closed") {
       throw new Error("GitHub issue status must be open or closed");
@@ -693,7 +716,15 @@ export class GitHubProvider extends CliProvider {
       ...this.mapIssue(issue),
       labels: (issue.labels ?? []).map((label) => label.name),
       assignees: (issue.assignees ?? []).map((assignee) => assignee.login),
-      capabilities: { canChangeStatus: this.capabilities.issueMutations },
+      children: [],
+      capabilities: {
+        canChangeStatus: this.capabilities.issueMutations,
+        iterations: this.capabilities.issueIterations,
+        children: this.capabilities.issueChildren,
+        limitations: [
+          "GitHub Issues does not expose sprint iterations or parent/child work-item hierarchy.",
+        ],
+      },
     };
   }
 }
@@ -765,7 +796,23 @@ type AzureTimelineRecord = {
 type AzureWorkItem = {
   id: number;
   fields?: Record<string, unknown>;
+  relations?: AzureWorkItemRelation[];
   url?: string;
+};
+
+type AzureWorkItemRelation = {
+  rel?: string;
+  url?: string;
+};
+
+type AzureIteration = {
+  id?: string;
+  name?: string;
+  path?: string;
+  attributes?: {
+    startDate?: string;
+    finishDate?: string;
+  };
 };
 
 export class AzureProvider extends CliProvider {
@@ -783,6 +830,8 @@ export class AzureProvider extends CliProvider {
     pipelineControls: true,
     issues: true,
     issueMutations: true,
+    issueIterations: true,
+    issueChildren: true,
   };
 
   constructor(
@@ -1082,11 +1131,14 @@ export class AzureProvider extends CliProvider {
   }
 
   async listIssues(query: CollaborationQuery): Promise<CollaborationPage<Issue>> {
+    const iterationClause = query.iterationPath
+      ? ` AND [System.IterationPath] = '${query.iterationPath.replaceAll("'", "''")}'`
+      : "";
     const args = [
       "boards",
       "query",
       "--wiql",
-      "SELECT TOP 30 [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project ORDER BY [System.ChangedDate] DESC",
+      `SELECT TOP 30 [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project${iterationClause} ORDER BY [System.ChangedDate] DESC`,
       "--organization",
       `https://dev.azure.com/${this.organization}`,
       "--project",
@@ -1099,6 +1151,33 @@ export class AzureProvider extends CliProvider {
       items: items
         .filter((item) => !query.search || this.mapIssue(item).title.toLowerCase().includes(query.search.toLowerCase()))
         .map((item) => this.mapIssue(item)),
+      hasNextPage: false,
+    };
+  }
+
+  async listIssueIterations(): Promise<CollaborationPage<IssueIteration>> {
+    const iterations = await runJsonCommand<AzureIteration[]>("az", [
+      "boards",
+      "iteration",
+      "project",
+      "list",
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--project",
+      this.project,
+      "--output",
+      "json",
+    ]);
+    return {
+      items: iterations
+        .filter((iteration) => iteration.id && iteration.path && iteration.name)
+        .map((iteration) => ({
+          id: iteration.id as string,
+          name: iteration.name as string,
+          path: iteration.path as string,
+          startDate: iteration.attributes?.startDate,
+          finishDate: iteration.attributes?.finishDate,
+        })),
       hasNextPage: false,
     };
   }
@@ -1118,6 +1197,36 @@ export class AzureProvider extends CliProvider {
       "json",
     ]);
     return this.mapIssueDetails(item);
+  }
+
+  async getIssueChildren(id: string): Promise<IssueChild[]> {
+    const item = await runJsonCommand<AzureWorkItem>("az", [
+      "boards",
+      "work-item",
+      "show",
+      "--id",
+      id,
+      "--organization",
+      `https://dev.azure.com/${this.organization}`,
+      "--project",
+      this.project,
+      "--expand",
+      "all",
+      "--output",
+      "json",
+    ]);
+    const childIds = (item.relations ?? [])
+      .filter((relation) => relation.rel === "System.LinkTypes.Hierarchy-Forward")
+      .map((relation) => relation.url?.match(/\/workItems\/(\d+)(?:\?.*)?$/i)?.[1])
+      .filter((childId): childId is string => childId !== undefined);
+    const children = await Promise.all(childIds.map((childId) => this.getIssue(childId)));
+    return children.map((child) => ({
+      id: child.id,
+      number: child.number,
+      title: child.title,
+      status: child.status,
+      url: child.url,
+    }));
   }
 
   async updateIssueStatus(id: string, status: IssueStatus): Promise<IssueDetails> {
@@ -1341,6 +1450,18 @@ export class AzureProvider extends CliProvider {
     };
   }
 
+  private mapIssueIteration(fields: Record<string, unknown>): IssueIteration | undefined {
+    const path = typeof fields["System.IterationPath"] === "string"
+      ? fields["System.IterationPath"]
+      : undefined;
+    if (!path) return undefined;
+    return {
+      id: path,
+      name: path.split("\\").at(-1) ?? path,
+      path,
+    };
+  }
+
   private mapIssueDetails(item: AzureWorkItem): IssueDetails {
     const fields = item.fields ?? {};
     const assignedTo = fields["System.AssignedTo"];
@@ -1350,7 +1471,14 @@ export class AzureProvider extends CliProvider {
         ? fields["System.Tags"].split(";").map((tag) => tag.trim()).filter(Boolean)
         : [],
       assignees: assignedTo ? [String(assignedTo)] : [],
-      capabilities: { canChangeStatus: this.capabilities.issueMutations },
+      iteration: this.mapIssueIteration(fields),
+      children: [],
+      capabilities: {
+        canChangeStatus: this.capabilities.issueMutations,
+        iterations: this.capabilities.issueIterations,
+        children: this.capabilities.issueChildren,
+        limitations: [],
+      },
     };
   }
 

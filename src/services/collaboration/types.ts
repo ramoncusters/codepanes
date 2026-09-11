@@ -164,12 +164,36 @@ export type Issue = {
   url: string;
 };
 
+export type IssueIteration = {
+  id: string;
+  name: string;
+  path: string;
+  startDate?: string;
+  finishDate?: string;
+};
+
+export type IssueChild = {
+  id: string;
+  number: number;
+  title: string;
+  status: IssueStatus;
+  type?: string;
+  url?: string;
+};
+
+export type IssueCapabilities = {
+  canChangeStatus: boolean;
+  iterations: boolean;
+  children: boolean;
+  limitations: string[];
+};
+
 export type IssueDetails = Issue & {
   labels: string[];
   assignees: string[];
-  capabilities: {
-    canChangeStatus: boolean;
-  };
+  iteration?: IssueIteration;
+  children: IssueChild[];
+  capabilities: IssueCapabilities;
 };
 
 export type IssueAction = "close" | "reopen";
@@ -178,6 +202,7 @@ export type CollaborationQuery = {
   cursor?: string;
   search?: string;
   branch?: string;
+  iterationPath?: string;
 };
 
 export type CollaborationProviderCapabilities = {
@@ -193,6 +218,8 @@ export type CollaborationProviderCapabilities = {
   pipelineControls: boolean;
   issues: boolean;
   issueMutations: boolean;
+  issueIterations: boolean;
+  issueChildren: boolean;
 };
 
 export interface CollaborationProvider {
@@ -223,6 +250,8 @@ export interface CollaborationProvider {
   resumePipeline(id: string): Promise<void>;
 
   listIssues(query: CollaborationQuery): Promise<CollaborationPage<Issue>>;
+  listIssueIterations(): Promise<CollaborationPage<IssueIteration>>;
   getIssue(id: string): Promise<IssueDetails>;
+  getIssueChildren(id: string): Promise<IssueChild[]>;
   updateIssueStatus(id: string, status: IssueStatus): Promise<IssueDetails>;
 }

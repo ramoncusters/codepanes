@@ -20,8 +20,10 @@ import type {
   PullRequestDetails,
   PullRequestDiff,
   Issue,
+  IssueChild,
   IssueDetails,
   IssueAction,
+  IssueIteration,
 } from "../services/collaboration/types.js";
 import {
   collaborationErrorMessage,
@@ -44,6 +46,9 @@ type PullRequestGroupOption =
 type PipelineTreeOption =
   | { kind: "stage"; stage: PipelineStage }
   | { kind: "job"; job: PipelineJob };
+type IssueViewOption =
+  | { kind: "backlog" }
+  | { kind: "iteration"; iteration: IssueIteration };
 
 export type CollaborationPromptRequest =
   | { kind: "comment"; pullRequest: PullRequest; commentType: "file" | "line" }
@@ -93,6 +98,8 @@ export class CollaborationPanel {
   private readonly pullRequestSelect: SelectRenderable;
   private readonly pipelineSelect: SelectRenderable;
   private readonly issueSelect: SelectRenderable;
+  private readonly issueViewSelect: SelectRenderable;
+  private readonly issueChildSelect: SelectRenderable;
   private readonly pipelineJobSelect: SelectRenderable;
   private readonly pipelineActionSelect: SelectRenderable;
   private readonly diffModeSelect: SelectRenderable;
@@ -102,6 +109,8 @@ export class CollaborationPanel {
   private readonly pullRequestRowsPanel: BoxRenderable;
   private readonly pipelineRowsPanel: BoxRenderable;
   private readonly issueRowsPanel: BoxRenderable;
+  private readonly issueViewRowsPanel: BoxRenderable;
+  private readonly issueChildRowsPanel: BoxRenderable;
   private readonly pipelineJobRowsPanel: BoxRenderable;
   private readonly pipelineActionRowsPanel: BoxRenderable;
   private readonly commentRowsPanel: BoxRenderable;
@@ -110,6 +119,8 @@ export class CollaborationPanel {
   private readonly pullRequestRows: ListItemRow[] = [];
   private readonly pipelineRows: ListItemRow[] = [];
   private readonly issueRows: ListItemRow[] = [];
+  private readonly issueViewRows: ListItemRow[] = [];
+  private readonly issueChildRows: ListItemRow[] = [];
   private readonly pipelineJobRows: ListItemRow[] = [];
   private readonly pipelineActionRows: ListItemRow[] = [];
   private readonly commentRows: ListItemRow[] = [];
@@ -148,7 +159,9 @@ export class CollaborationPanel {
     | "resources"
     | "pull-requests"
     | "pipelines"
+    | "issue-views"
     | "issues"
+    | "issue-children"
     | "pipeline-jobs"
     | "pipeline-actions"
     | "comments"
@@ -156,6 +169,9 @@ export class CollaborationPanel {
   private readonly onAuthenticationRequired: (provider: "github" | "azure") => void;
   private readonly onPromptRequested: (request: CollaborationPromptRequest) => void;
   private activeBranch: string | undefined;
+  private issueIterations: IssueIteration[] = [];
+  private issueChildren: IssueChild[] = [];
+  private issueViewLoadId = 0;
   private updateFocusedPaneBorder(): void {
     this.listPanel.borderColor = this.resourcePickerVisible ? this.theme.accent : this.theme.border;
     this.detailPanel.borderColor = this.resourcePickerVisible ? this.theme.border : this.theme.accent;
@@ -280,6 +296,22 @@ export class CollaborationPanel {
       showDescription: true,
       showSelectionIndicator: true,
     });
+    this.issueViewSelect = new SelectRenderable(renderer, {
+      width: "100%",
+      height: 3,
+      visible: false,
+      options: [],
+      showDescription: false,
+      showSelectionIndicator: true,
+    });
+    this.issueChildSelect = new SelectRenderable(renderer, {
+      width: "100%",
+      height: 8,
+      visible: false,
+      options: [],
+      showDescription: true,
+      showSelectionIndicator: true,
+    });
     this.pipelineJobSelect = new SelectRenderable(renderer, {
       width: "100%",
       height: 8,
@@ -327,6 +359,8 @@ export class CollaborationPanel {
     this.pullRequestRowsPanel = this.createRowsPanel();
     this.pipelineRowsPanel = this.createRowsPanel();
     this.issueRowsPanel = this.createRowsPanel();
+    this.issueViewRowsPanel = this.createRowsPanel();
+    this.issueChildRowsPanel = this.createRowsPanel();
     this.pipelineJobRowsPanel = this.createRowsPanel();
     this.pipelineActionRowsPanel = this.createRowsPanel();
     this.commentRowsPanel = this.createRowsPanel();
@@ -338,11 +372,15 @@ export class CollaborationPanel {
     this.detailPanel.add(this.pullRequestSelect);
     this.detailPanel.add(this.pipelineRowsPanel);
     this.detailPanel.add(this.pipelineSelect);
+    this.detailPanel.add(this.issueViewRowsPanel);
+    this.detailPanel.add(this.issueViewSelect);
     this.detailPanel.add(this.issueRowsPanel);
     this.detailPanel.add(this.issueSelect);
     this.detailPanel.add(this.detailText);
     this.detailPanel.add(this.pipelineJobRowsPanel);
     this.detailPanel.add(this.pipelineJobSelect);
+    this.detailPanel.add(this.issueChildRowsPanel);
+    this.detailPanel.add(this.issueChildSelect);
     this.detailPanel.add(this.pipelineActionRowsPanel);
     this.detailPanel.add(this.pipelineActionSelect);
     this.detailPanel.add(this.commentRowsPanel);
@@ -369,6 +407,12 @@ export class CollaborationPanel {
       this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows));
     this.issueSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
       this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows));
+    this.issueViewSelect.on(SelectRenderableEvents.SELECTION_CHANGED, (index) => {
+      this.syncRows(this.issueViewSelect, this.issueViewRowsPanel, this.issueViewRows);
+      if (this.issueViewSelect.options[index]) void this.loadIssueView(index);
+    });
+    this.issueChildSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
+      this.syncRows(this.issueChildSelect, this.issueChildRowsPanel, this.issueChildRows));
     this.pipelineJobSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
       this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows));
     this.pipelineActionSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () =>
@@ -387,6 +431,9 @@ export class CollaborationPanel {
     this.issueSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       const issue = this.issueSelect.options[index]?.value as Issue | undefined;
       if (issue) void this.showIssue(issue);
+    });
+    this.issueViewSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
+      void this.loadIssueView(index);
     });
     this.pipelineJobSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       const item = this.pipelineTreeOptions[index];
@@ -461,6 +508,7 @@ export class CollaborationPanel {
     this.handleResize();
     this.applyTheme(this.theme);
     this.syncRows(this.resourceSelect, this.resourceRowsPanel, this.resourceRows);
+    this.syncRows(this.issueViewSelect, this.issueViewRowsPanel, this.issueViewRows);
   }
 
   private createRowsPanel(): BoxRenderable {
@@ -524,8 +572,12 @@ export class CollaborationPanel {
         ? this.pullRequestSelect
         : this.focusedSection === "pipelines"
           ? this.pipelineSelect
+          : this.focusedSection === "issue-views"
+            ? this.issueViewSelect
           : this.focusedSection === "issues"
             ? this.issueSelect
+            : this.focusedSection === "issue-children"
+              ? this.issueChildSelect
             : this.focusedSection === "pipeline-jobs"
               ? this.pipelineJobSelect
               : this.focusedSection === "pipeline-actions"
@@ -580,6 +632,14 @@ export class CollaborationPanel {
       this.focusedSection = "pipelines";
       this.pipelineSelect.focus();
     } else if (this.focusedSection === "resources" && this.issueSelect.visible) {
+      if (this.issueViewSelect.visible) {
+        this.focusedSection = "issue-views";
+        this.issueViewSelect.focus();
+      } else {
+        this.focusedSection = "issues";
+        this.issueSelect.focus();
+      }
+    } else if (this.focusedSection === "issue-views" && this.issueSelect.visible) {
       this.focusedSection = "issues";
       this.issueSelect.focus();
     } else if (this.focusedSection === "pipelines" && this.pipelineJobSelect.visible) {
@@ -594,7 +654,13 @@ export class CollaborationPanel {
     } else if (this.focusedSection === "pull-requests" && this.commentSelect.visible) {
       this.focusedSection = "comments";
       this.commentSelect.focus();
-    } else if (this.focusedSection === "issues" && this.actionSelect.visible) {
+    } else if (this.focusedSection === "issues" && this.issueChildSelect.visible) {
+      this.focusedSection = "issue-children";
+      this.issueChildSelect.focus();
+    } else if (
+      (this.focusedSection === "issues" || this.focusedSection === "issue-children")
+      && this.actionSelect.visible
+    ) {
       this.focusedSection = "actions";
       this.actionSelect.focus();
     } else if (
@@ -628,9 +694,18 @@ export class CollaborationPanel {
     } else if (this.focusedSection === "actions" && this.commentSelect.visible) {
       this.focusedSection = "comments";
       this.commentSelect.focus();
+    } else if (this.focusedSection === "actions" && this.issueChildSelect.visible) {
+      this.focusedSection = "issue-children";
+      this.issueChildSelect.focus();
     } else if (this.focusedSection === "actions" && this.issueSelect.visible) {
       this.focusedSection = "issues";
       this.issueSelect.focus();
+    } else if (this.focusedSection === "issue-children") {
+      this.focusedSection = "issues";
+      this.issueSelect.focus();
+    } else if (this.focusedSection === "issues" && this.issueViewSelect.visible) {
+      this.focusedSection = "issue-views";
+      this.issueViewSelect.focus();
     } else if (
       (this.focusedSection === "actions" || this.focusedSection === "comments")
       && this.pullRequestSelect.visible
@@ -665,6 +740,11 @@ export class CollaborationPanel {
       return;
     }
     if (this.selectedResourceIndex === 2) {
+      if (this.focusedSection === "issue-views") {
+        void this.loadIssueView(this.issueViewSelect.getSelectedIndex());
+        return;
+      }
+      if (this.focusedSection === "issue-children") return;
       const issue = this.issueSelect.options[this.issueSelect.getSelectedIndex()]?.value as Issue | undefined;
       if (issue) void this.showIssue(issue);
       return;
@@ -679,12 +759,27 @@ export class CollaborationPanel {
 
   async openSelectedResourceInBrowser(): Promise<void> {
     if (this.resourcePickerVisible) return;
+    if (this.selectedResourceIndex === 2 && this.focusedSection === "issue-children") {
+      const child = this.issueChildSelect.options[this.issueChildSelect.getSelectedIndex()]?.value as
+        | IssueChild
+        | undefined;
+      if (child?.url) await openExternalUrl(child.url);
+      return;
+    }
     const option = this.selectedResourceIndex === 0
       ? this.pullRequestSelect.options[this.pullRequestSelect.getSelectedIndex()]?.value as PullRequest | undefined
       : this.selectedResourceIndex === 1
         ? this.pipelineSelect.options[this.pipelineSelect.getSelectedIndex()]?.value as Pipeline | undefined
         : this.issueSelect.options[this.issueSelect.getSelectedIndex()]?.value as Issue | undefined;
     if (option?.url) await openExternalUrl(option.url);
+  }
+
+  cycleIssueIteration(delta: number): void {
+    if (!this.issueViewSelect.visible || this.issueViewSelect.options.length === 0) return;
+    const count = this.issueViewSelect.options.length;
+    const next = (this.issueViewSelect.getSelectedIndex() + delta + count) % count;
+    this.issueViewSelect.setSelectedIndex(next);
+    void this.loadIssueView(next);
   }
 
   private openSelectedResource(): void {
@@ -753,20 +848,22 @@ export class CollaborationPanel {
     try {
       const status = action === "close" ? "closed" : "open";
       const details = await this.provider.updateIssueStatus(this.selectedIssue.id, status);
-      this.selectedIssue = details;
-      this.selectedIssueDetails = details;
+      const updatedDetails = { ...details, children: this.issueChildren };
+      this.selectedIssue = updatedDetails;
+      this.selectedIssueDetails = updatedDetails;
       const issueIndex = this.issueSelect.options.findIndex(
-        (option) => (option.value as Issue | undefined)?.id === details.id,
+        (option) => (option.value as Issue | undefined)?.id === updatedDetails.id,
       );
       if (issueIndex >= 0) {
         this.issueSelect.options = this.issueSelect.options.map((option, index) =>
           index === issueIndex
-            ? { ...option, description: `${details.status} · ${details.author}`, value: details }
+            ? { ...option, description: updatedDetails.status, value: updatedDetails }
             : option);
         this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows);
       }
-      this.renderIssueDetails(details);
-      this.updateIssueActionOptions(details);
+      this.renderIssueDetails(updatedDetails);
+      this.renderIssueChildren(this.issueChildren);
+      this.updateIssueActionOptions(updatedDetails);
     } catch (error) {
       this.showActionError("Unable to update issue / work item", error);
       throw error;
@@ -830,7 +927,13 @@ export class CollaborationPanel {
     this.pullRequestSelect.selectedTextColor = theme.text;
     this.pullRequestSelect.descriptionColor = theme.muted;
     this.pullRequestSelect.selectedDescriptionColor = theme.text;
-    for (const select of [this.pipelineSelect, this.pipelineJobSelect, this.pipelineActionSelect]) {
+    for (const select of [
+      this.pipelineSelect,
+      this.pipelineJobSelect,
+      this.pipelineActionSelect,
+      this.issueViewSelect,
+      this.issueChildSelect,
+    ]) {
       select.backgroundColor = theme.panelBackground;
       select.focusedBackgroundColor = theme.focusedBackground;
       select.selectedBackgroundColor = theme.focusedBackground;
@@ -870,7 +973,9 @@ export class CollaborationPanel {
       ...this.resourceRows,
       ...this.pullRequestRows,
       ...this.pipelineRows,
+      ...this.issueViewRows,
       ...this.issueRows,
+      ...this.issueChildRows,
       ...this.pipelineJobRows,
       ...this.pipelineActionRows,
       ...this.commentRows,
@@ -888,8 +993,10 @@ export class CollaborationPanel {
     this.detailTitle.content = name;
     this.pullRequestSelect.visible = false;
     this.pipelineSelect.visible = false;
+    this.issueViewSelect.visible = false;
     this.issueSelect.visible = false;
     this.pipelineJobSelect.visible = false;
+    this.issueChildSelect.visible = false;
     this.pipelineActionSelect.visible = false;
     this.commentSelect.visible = false;
     this.actionSelect.visible = false;
@@ -899,8 +1006,10 @@ export class CollaborationPanel {
     this.detailText.visible = true;
     this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows);
     this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
+    this.syncRows(this.issueViewSelect, this.issueViewRowsPanel, this.issueViewRows);
     this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows);
     this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows);
+    this.syncRows(this.issueChildSelect, this.issueChildRowsPanel, this.issueChildRows);
     this.syncRows(this.pipelineActionSelect, this.pipelineActionRowsPanel, this.pipelineActionRows);
     this.syncRows(this.commentSelect, this.commentRowsPanel, this.commentRows);
     this.syncRows(this.actionSelect, this.actionRowsPanel, this.actionRows);
@@ -914,6 +1023,8 @@ export class CollaborationPanel {
     this.pipelineTreeOptions = [];
     this.selectedComment = undefined;
     this.comments = [];
+    this.issueIterations = [];
+    this.issueChildren = [];
     if (index === 1) {
       if (!this.provider) {
         this.detailText.content = "No supported GitHub or Azure remote was detected.";
@@ -969,7 +1080,9 @@ export class CollaborationPanel {
         return;
       }
       if (!force && this.loadedResources.has(index)) {
+        this.issueViewSelect.visible = true;
         this.issueSelect.visible = true;
+        this.syncRows(this.issueViewSelect, this.issueViewRowsPanel, this.issueViewRows);
         this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows);
         this.detailText.content = this.issueSelect.options.length > 0
           ? "Select an issue or work item to view its details."
@@ -978,19 +1091,30 @@ export class CollaborationPanel {
       }
       this.detailText.content = "Loading issues / work items...";
       try {
-        const page = await this.provider.listIssues({});
+        if (loadId !== this.resourceLoadId) return;
+        if (this.provider.capabilities.issueIterations) {
+          const iterationPage = await this.provider.listIssueIterations();
+          if (loadId !== this.resourceLoadId) return;
+          this.issueIterations = iterationPage.items;
+        }
+        this.issueViewSelect.options = [
+          {
+            name: "Backlog",
+            description: "",
+            value: { kind: "backlog" } satisfies IssueViewOption,
+          },
+          ...this.issueIterations.map((iteration) => ({
+            name: iteration.name,
+            description: iteration.path,
+            value: { kind: "iteration", iteration } satisfies IssueViewOption,
+          })),
+        ];
+        this.issueViewSelect.setSelectedIndex(0);
+        this.issueViewSelect.visible = true;
+        this.syncRows(this.issueViewSelect, this.issueViewRowsPanel, this.issueViewRows);
+        await this.loadIssueView(0, loadId);
         if (loadId !== this.resourceLoadId) return;
         this.loadedResources.add(index);
-        this.issueSelect.options = page.items.map((issue) => ({
-          name: issue.title,
-          description: issue.status,
-          value: issue,
-        }));
-        this.issueSelect.visible = true;
-        this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows);
-        this.detailText.content = page.items.length > 0
-          ? "Select an issue or work item to view its details."
-          : "No issues or work items found.";
       } catch (error) {
         if (loadId !== this.resourceLoadId) return;
         const authenticationError = isAuthenticationError(error);
@@ -1065,6 +1189,50 @@ export class CollaborationPanel {
         return options;
       });
     this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows);
+  }
+
+  private async loadIssueView(index: number, expectedLoadId = this.resourceLoadId): Promise<void> {
+    if (!this.provider || this.selectedResourceIndex !== 2) return;
+    const option = this.issueViewSelect.options[index]?.value as IssueViewOption | undefined;
+    if (!option) return;
+    const viewLoadId = ++this.issueViewLoadId;
+    this.detailText.content = "Loading issues / work items...";
+    this.issueSelect.options = [];
+    this.issueSelect.visible = true;
+    this.issueChildSelect.options = [];
+    this.issueChildSelect.visible = false;
+    this.issueChildren = [];
+    this.selectedIssue = undefined;
+    this.selectedIssueDetails = undefined;
+    this.actionSelect.options = [];
+    this.actionSelect.visible = false;
+    this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows);
+    this.syncRows(this.issueChildSelect, this.issueChildRowsPanel, this.issueChildRows);
+    try {
+      const page = await this.provider.listIssues({
+        ...(option.kind === "iteration" ? { iterationPath: option.iteration.path } : {}),
+      });
+      if (expectedLoadId !== this.resourceLoadId || viewLoadId !== this.issueViewLoadId) return;
+      this.issueSelect.options = page.items.map((issue) => ({
+        name: issue.title,
+        description: issue.status,
+        value: issue,
+      }));
+      this.syncRows(this.issueSelect, this.issueRowsPanel, this.issueRows);
+      const limitations = !this.provider.capabilities.issueIterations
+        ? " GitHub Issues does not expose sprint iterations; showing the backlog."
+        : "";
+      this.detailText.content = page.items.length > 0
+        ? `Select an issue or work item to view its details.${limitations}`
+        : `No issues or work items found.${limitations}`;
+    } catch (error) {
+      if (expectedLoadId !== this.resourceLoadId || viewLoadId !== this.issueViewLoadId) return;
+      const authenticationError = isAuthenticationError(error);
+      this.detailText.content = authenticationError
+        ? `Authentication required for ${this.provider.id}.`
+        : `Unable to load issues / work items: ${collaborationErrorMessage(error)}`;
+      if (authenticationError) this.onAuthenticationRequired(this.provider.id);
+    }
   }
 
   private activatePullRequestOption(index: number): void {
@@ -1344,7 +1512,20 @@ export class CollaborationPanel {
       const details = await this.provider.getIssue(issue.id);
       if (loadId !== this.resourceLoadId || this.selectedIssue?.id !== issue.id) return;
       this.selectedIssueDetails = details;
+      this.issueChildren = [];
+      let childError: string | undefined;
+      if (details.capabilities.children && this.provider.capabilities.issueChildren) {
+        try {
+          this.issueChildren = await this.provider.getIssueChildren(issue.id);
+        } catch (error) {
+          if (loadId !== this.resourceLoadId || this.selectedIssue?.id !== issue.id) return;
+          childError = `Unable to load child items: ${collaborationErrorMessage(error)}`;
+        }
+      }
+      this.selectedIssueDetails = { ...details, children: this.issueChildren };
       this.renderIssueDetails(details);
+      if (childError) this.detailText.content += `\n\n${childError}`;
+      this.renderIssueChildren(this.issueChildren);
       this.updateIssueActionOptions(details);
     } catch (error) {
       if (loadId !== this.resourceLoadId || this.selectedIssue?.id !== issue.id) return;
@@ -1357,15 +1538,30 @@ export class CollaborationPanel {
   }
 
   private renderIssueDetails(details: IssueDetails): void {
+    const limitations = details.capabilities.limitations.length > 0
+      ? ["", "Limitations:", ...details.capabilities.limitations.map((limitation) => `- ${limitation}`)]
+      : [];
     this.detailText.content = [
       `#${details.number} ${details.title}`,
       `${details.status} · ${details.author}`,
       details.updatedAt ? `updated ${details.updatedAt}` : "update time unavailable",
+      details.iteration ? `Iteration: ${details.iteration.path}` : "Backlog / iteration unavailable",
       details.assignees.length > 0 ? `Assignees: ${details.assignees.join(", ")}` : "Unassigned",
       details.labels.length > 0 ? `Labels: ${details.labels.join(", ")}` : "No labels",
       "",
       details.description ?? "No description.",
+      ...limitations,
     ].join("\n");
+  }
+
+  private renderIssueChildren(children: IssueChild[]): void {
+    this.issueChildSelect.options = children.map((child, index) => ({
+      name: `${index === children.length - 1 ? "└─" : "├─"} ${child.title}`,
+      description: `${child.status}${child.type ? ` · ${child.type}` : ""}`,
+      value: child,
+    }));
+    this.issueChildSelect.visible = children.length > 0;
+    this.syncRows(this.issueChildSelect, this.issueChildRowsPanel, this.issueChildRows);
   }
 
   private updateIssueActionOptions(details: IssueDetails): void {

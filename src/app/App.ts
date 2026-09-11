@@ -663,7 +663,8 @@ export async function runApp(): Promise<void> {
       if (!state.keybindingsActive && !state.configEditorActive) collaborationPanel.focusResource();
       footerText.content = keyHints(appliedTheme, [
         ["j/k", "navigate"],
-        ["Enter", "open/select"],
+        ["Enter", "open/expand"],
+        ["[/]", "cycle iterations"],
         ["Esc", "resources"],
         ["r", "refresh"],
         ["Tab", "switch tabs"],
@@ -1125,6 +1126,11 @@ export async function runApp(): Promise<void> {
         void collaborationPanel.openSelectedResourceInBrowser().catch((error: unknown) => {
           footerText.content = `Unable to open collaboration item: ${String(error)}`;
         });
+        return;
+      }
+      if (key.name === "[" || key.name === "]") {
+        key.preventDefault();
+        collaborationPanel.cycleIssueIteration(key.name === "]" ? 1 : -1);
         return;
       }
       if (key.name === "r") {
