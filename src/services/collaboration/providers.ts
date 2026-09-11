@@ -740,6 +740,7 @@ type AzurePullRequest = {
   creationDate: string;
   closedDate?: string;
   url: string;
+  _links?: { web?: { href?: string } };
   repository?: { name?: string };
 };
 
@@ -1046,7 +1047,10 @@ export class AzureProvider extends CliProvider {
       sourceBranch: pullRequest.sourceRefName.replace(/^refs\/heads\//, ""),
       targetBranch: pullRequest.targetRefName.replace(/^refs\/heads\//, ""),
       updatedAt: pullRequest.closedDate ?? pullRequest.creationDate,
-      url: pullRequest.url,
+      url: pullRequest._links?.web?.href
+        ?? (pullRequest.url.includes("/_apis/")
+          ? `https://dev.azure.com/${encodeURIComponent(this.organization)}/${encodeURIComponent(this.project)}/_git/${encodeURIComponent(this.repository)}/pullrequest/${pullRequest.pullRequestId}`
+          : pullRequest.url),
     };
   }
 
