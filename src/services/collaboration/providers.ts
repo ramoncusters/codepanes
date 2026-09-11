@@ -1156,7 +1156,7 @@ export class AzureProvider extends CliProvider {
   }
 
   async listIssueIterations(): Promise<CollaborationPage<IssueIteration>> {
-    const iterations = await runJsonCommand<AzureIteration[]>("az", [
+    const response = await runJsonCommand<AzureIteration[] | { value?: AzureIteration[] }>("az", [
       "boards",
       "iteration",
       "project",
@@ -1168,6 +1168,10 @@ export class AzureProvider extends CliProvider {
       "--output",
       "json",
     ]);
+    const iterations = Array.isArray(response) ? response : response.value;
+    if (!iterations) {
+      throw new Error("Azure iteration list returned an unexpected response shape");
+    }
     return {
       items: iterations
         .filter((iteration) => iteration.id && iteration.path && iteration.name)
