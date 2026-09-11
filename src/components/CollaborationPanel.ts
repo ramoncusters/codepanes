@@ -755,7 +755,10 @@ export class CollaborationPanel {
       if (issue) void this.showIssue(issue);
       return;
     }
-    if (this.selectedResourceIndex === 0) return;
+    if (this.selectedResourceIndex === 0) {
+      this.activatePullRequestOption(this.pullRequestSelect.getSelectedIndex());
+      return;
+    }
     if (this.selectedResourceIndex === 1) {
       const pipeline = this.pipelineSelect.options[this.pipelineSelect.getSelectedIndex()]?.value as Pipeline | undefined;
       if (pipeline) void this.showPipeline(pipeline);
