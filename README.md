@@ -51,8 +51,20 @@ project name.
 
 Pipeline runs are shown for the current project by default. To limit the
 Collaboration tab to selected pipeline names, add a project-level `pipelines`
-array, for example `"pipelines": ["CI", "Deploy"]`. Press `r` in the
-Collaboration tab to refresh the list after changing the configuration.
+array. Names are matched exactly, for example:
+
+```json
+{
+  "projects": {
+    "my-repository": {
+      "pipelines": ["CI", "Deploy"]
+    }
+  }
+}
+```
+
+Omit `pipelines` to show all pipeline runs. Press `r` in the Collaboration tab
+to refresh the list after changing the configuration.
 
 The Collaboration tab opens with a resource picker for Pull requests, Pipelines,
 and Issues / Work items. Use `Up`/`Down` and `Enter` to choose a resource,
