@@ -382,6 +382,7 @@ export class CollaborationPanel {
     this.resourceRowsPanel = this.createRowsPanel();
     this.pullRequestRowsPanel = this.createRowsPanel();
     this.pipelineRowsPanel = this.createRowsPanel();
+    this.pipelineRowsPanel.marginTop = 1;
     this.issueRowsPanel = this.createRowsPanel();
     this.issueViewRowsPanel = this.createRowsPanel();
     this.issueChildRowsPanel = this.createRowsPanel();
