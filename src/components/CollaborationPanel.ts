@@ -1099,9 +1099,12 @@ export class CollaborationPanel {
           `Configured names: ${this.pipelineNames.size > 0 ? [...this.pipelineNames].join(", ") : "all"}`,
           `Runs returned by provider: ${page.items.length}`,
           `Runs after name filter: ${pipelines.length}`,
-          page.items.length > 0
-            ? `Returned names: ${page.items.map((pipeline) => pipeline.name).join(", ")}`
-            : "Returned names: none",
+          "Returned names:",
+          ...(page.items.length > 0
+            ? [...new Set(page.items.map((pipeline) => pipeline.name))]
+              .sort((left, right) => left.localeCompare(right))
+              .map((name) => `- ${name}`)
+            : ["- none"]),
         ].join("\n");
         this.pipelineSelect.options = pipelines.map((pipeline) => ({
           name: pipeline.name,
