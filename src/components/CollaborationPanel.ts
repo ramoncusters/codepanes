@@ -393,6 +393,7 @@ export class CollaborationPanel {
     this.diffText = new TextRenderable(renderer, { visible: false, content: "" });
     this.pipelineLogText = new TextRenderable(renderer, { visible: false, content: "" });
     this.detailPanel.add(this.detailTitle);
+    this.detailPanel.add(this.detailText);
     this.detailPanel.add(this.pullRequestRowsPanel);
     this.detailPanel.add(this.pullRequestSelect);
     this.detailPanel.add(this.pipelineRowsPanel);
@@ -401,7 +402,6 @@ export class CollaborationPanel {
     this.detailPanel.add(this.issueViewSelect);
     this.detailPanel.add(this.issueRowsPanel);
     this.detailPanel.add(this.issueSelect);
-    this.detailPanel.add(this.detailText);
     this.detailPanel.add(this.issueChildRowsPanel);
     this.detailPanel.add(this.issueChildSelect);
     this.detailPanel.add(this.commentRowsPanel);
