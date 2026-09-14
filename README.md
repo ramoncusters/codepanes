@@ -74,8 +74,10 @@ and Issues / Work items. Use `Up`/`Down` and `Enter` to choose a resource,
 details, `o` to open the selected item in the browser, and `r` to refresh the
 selected resource. Enter is intentionally inactive for pull requests. Enter on
 a pipeline expands its stages and jobs as a status tree; Enter on an issue or
-work item expands its details and child items. On the issue view, `[` and `]`
-cycle between the backlog and available sprint/iteration filters. Press `l` in
+work item expands its details and child items. Pipeline runs are grouped by
+pipeline name and branch; Enter expands a group, then Enter on a run expands
+its details. On the issue view, `[` and `]` cycle between the backlog and
+available sprint/iteration filters. Press `l` in
 the Pipelines view to open diagnostics showing the provider query context,
 returned runs, and configured-name filtering. Use `L` to move focus forward
 between panes. Provider actions prompt for confirmation.

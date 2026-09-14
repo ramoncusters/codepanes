@@ -43,6 +43,9 @@ type PullRequestGroupStatus = "open" | "draft" | "merged" | "closed";
 type PullRequestGroupOption =
   | { kind: "group"; status: PullRequestGroupStatus }
   | PullRequest;
+type PipelineGroupOption =
+  | { kind: "group"; key: string; name: string; branch?: string; runs: Pipeline[] }
+  | { kind: "run"; pipeline: Pipeline };
 type PipelineTreeOption =
   | { kind: "stage"; stage: PipelineStage }
   | { kind: "job"; job: PipelineJob };
@@ -65,6 +68,7 @@ function renderDiff(diff: PullRequestDiff, mode: DiffMode): string {
         .map((file) => `${file.path}  +${file.additions}  -${file.deletions}`)
         .join("\n");
   }
+
   const lines: string[] = [];
   for (const file of diff.files) {
     lines.push(`--- ${file.path}`);
@@ -143,7 +147,10 @@ export class CollaborationPanel {
   private selectedIssue: Issue | undefined;
   private selectedIssueDetails: IssueDetails | undefined;
   private pipelineJobs: PipelineJob[] = [];
+  private pipelineRuns: Pipeline[] = [];
   private pipelineTreeOptions: PipelineTreeOption[] = [];
+  private readonly collapsedPipelineGroups = new Set<string>();
+  private pipelineGroupsInitialized = false;
   private pipelineDiagnostics = "No pipeline query has run yet.";
   private selectedComment: PullRequestComment | undefined;
   private comments: PullRequestComment[] = [];
@@ -441,8 +448,7 @@ export class CollaborationPanel {
       this.activatePullRequestOption(index);
     });
     this.pipelineSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
-      const pipeline = this.pipelineSelect.options[index]?.value as Pipeline | undefined;
-      if (pipeline) void this.showPipeline(pipeline);
+      this.activatePipelineOption(index);
     });
     this.issueSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
       const issue = this.issueSelect.options[index]?.value as Issue | undefined;
@@ -783,8 +789,7 @@ export class CollaborationPanel {
       return;
     }
     if (this.selectedResourceIndex === 1) {
-      const pipeline = this.pipelineSelect.options[this.pipelineSelect.getSelectedIndex()]?.value as Pipeline | undefined;
-      if (pipeline) void this.showPipeline(pipeline);
+      this.activatePipelineOption(this.pipelineSelect.getSelectedIndex());
       return;
     }
   }
@@ -801,7 +806,12 @@ export class CollaborationPanel {
     const option = this.selectedResourceIndex === 0
       ? this.pullRequestSelect.options[this.pullRequestSelect.getSelectedIndex()]?.value as PullRequest | undefined
       : this.selectedResourceIndex === 1
-        ? this.pipelineSelect.options[this.pipelineSelect.getSelectedIndex()]?.value as Pipeline | undefined
+        ? (() => {
+          const value = this.pipelineSelect.options[this.pipelineSelect.getSelectedIndex()]?.value as
+            | PipelineGroupOption
+            | undefined;
+          return value?.kind === "run" ? value.pipeline : undefined;
+        })()
         : this.issueSelect.options[this.issueSelect.getSelectedIndex()]?.value as Issue | undefined;
     if (option?.url) await openExternalUrl(option.url);
   }
@@ -1071,6 +1081,8 @@ export class CollaborationPanel {
       }
       if (this.pipelineNames.size === 0) {
         this.loadedResources.add(index);
+        this.pipelineRuns = [];
+        this.pipelineGroupsInitialized = false;
         this.pipelineSelect.options = [];
         this.pipelineSelect.visible = true;
         this.pipelineDiagnostics = "No pipelines are configured for this project. Add a non-empty pipelines array to the project configuration.";
@@ -1080,6 +1092,7 @@ export class CollaborationPanel {
       }
       if (!force && this.loadedResources.has(index)) {
         this.pipelineSelect.visible = true;
+        this.renderPipelineGroups(this.pipelineRuns);
         this.pipelineDiagnostics = [
           `Provider: ${this.provider.id}`,
           `Command: ${this.provider.describePipelineQuery?.({
@@ -1106,6 +1119,7 @@ export class CollaborationPanel {
         if (loadId !== this.resourceLoadId) return;
         this.loadedResources.add(index);
         const pipelines = page.items.filter((pipeline) => this.pipelineNames.has(pipeline.name));
+        this.pipelineRuns = pipelines;
         this.pipelineDiagnostics = [
           `Provider: ${this.provider.id}`,
           `Command: ${this.provider.describePipelineQuery?.({
@@ -1123,11 +1137,7 @@ export class CollaborationPanel {
               .map((name) => `- ${name}`)
             : ["- none"]),
         ].join("\n");
-        this.pipelineSelect.options = pipelines.map((pipeline) => ({
-          name: pipeline.name,
-          description: pipeline.status,
-          value: pipeline,
-        }));
+        this.renderPipelineGroups(this.pipelineRuns);
         this.pipelineSelect.visible = true;
         this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
         this.detailText.content = pipelines.length > 0
@@ -1267,6 +1277,57 @@ export class CollaborationPanel {
         return options;
       });
     this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows);
+  }
+
+  private renderPipelineGroups(pipelines: Pipeline[]): void {
+    const groups = new Map<string, { name: string; branch?: string; runs: Pipeline[] }>();
+    for (const pipeline of pipelines) {
+      const key = `${pipeline.name}\u0000${pipeline.branch ?? ""}`;
+      const group = groups.get(key) ?? { name: pipeline.name, branch: pipeline.branch, runs: [] };
+      group.runs.push(pipeline);
+      groups.set(key, group);
+    }
+    if (!this.pipelineGroupsInitialized) {
+      for (const key of groups.keys()) this.collapsedPipelineGroups.add(key);
+      this.pipelineGroupsInitialized = true;
+    }
+    this.pipelineSelect.options = [...groups.entries()]
+      .sort(([, left], [, right]) =>
+        `${left.name}\u0000${left.branch ?? ""}`.localeCompare(`${right.name}\u0000${right.branch ?? ""}`))
+      .flatMap(([key, group]) => {
+        const collapsed = this.collapsedPipelineGroups.has(key);
+        const options: Array<{ name: string; description: string; value: PipelineGroupOption }> = [{
+          name: `${group.name} · ${group.branch ?? "unknown branch"} (${group.runs.length})`,
+          description: collapsed ? "press Enter to expand" : "press Enter to collapse",
+          value: { kind: "group", key, name: group.name, branch: group.branch, runs: group.runs },
+        }];
+        if (!collapsed) {
+          options.push(...group.runs
+            .sort((left, right) => (right.startedAt ?? "").localeCompare(left.startedAt ?? ""))
+            .map((pipeline) => ({
+              name: `  ${pipeline.name}`,
+              description: `${pipeline.status} · ${pipeline.commit?.slice(0, 8) ?? "no commit"}`,
+              value: { kind: "run" as const, pipeline },
+            })));
+        }
+        return options;
+      });
+    this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
+  }
+
+  private activatePipelineOption(index: number): void {
+    const option = this.pipelineSelect.options[index]?.value as PipelineGroupOption | undefined;
+    if (!option) return;
+    if (option.kind === "group") {
+      if (this.collapsedPipelineGroups.has(option.key)) {
+        this.collapsedPipelineGroups.delete(option.key);
+      } else {
+        this.collapsedPipelineGroups.add(option.key);
+      }
+      this.renderPipelineGroups(this.pipelineRuns);
+      return;
+    }
+    void this.showPipeline(option.pipeline);
   }
 
   private async loadIssueView(index: number, expectedLoadId = this.resourceLoadId): Promise<void> {
