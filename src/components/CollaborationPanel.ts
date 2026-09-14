@@ -134,6 +134,7 @@ export class CollaborationPanel {
   private readonly pipelineOutputPanel: BoxRenderable;
   private readonly detailTitle: TextRenderable;
   private readonly detailText: TextRenderable;
+  private readonly pipelineDetailsText: TextRenderable;
   private readonly diffText: TextRenderable;
   private readonly pipelineLogText: TextRenderable;
   private readonly renderer: CliRenderer;
@@ -294,6 +295,7 @@ export class CollaborationPanel {
     this.detailText = new TextRenderable(renderer, {
       content: "Select a resource to get started.",
     });
+    this.pipelineDetailsText = new TextRenderable(renderer, { visible: false, content: "" });
     this.pullRequestSelect = new SelectRenderable(renderer, {
       width: "100%",
       flexGrow: 1,
@@ -399,12 +401,8 @@ export class CollaborationPanel {
     this.detailPanel.add(this.issueRowsPanel);
     this.detailPanel.add(this.issueSelect);
     this.detailPanel.add(this.detailText);
-    this.detailPanel.add(this.pipelineJobRowsPanel);
-    this.detailPanel.add(this.pipelineJobSelect);
     this.detailPanel.add(this.issueChildRowsPanel);
     this.detailPanel.add(this.issueChildSelect);
-    this.detailPanel.add(this.pipelineActionRowsPanel);
-    this.detailPanel.add(this.pipelineActionSelect);
     this.detailPanel.add(this.commentRowsPanel);
     this.detailPanel.add(this.commentSelect);
     this.detailPanel.add(this.actionRowsPanel);
@@ -412,6 +410,11 @@ export class CollaborationPanel {
     this.detailPanel.add(this.diffModeSelect);
     this.detailPanel.add(this.diffText);
     this.pipelineOutputPanel.add(this.pipelineLogText);
+    this.pipelineOutputPanel.add(this.pipelineDetailsText);
+    this.pipelineOutputPanel.add(this.pipelineJobRowsPanel);
+    this.pipelineOutputPanel.add(this.pipelineJobSelect);
+    this.pipelineOutputPanel.add(this.pipelineActionRowsPanel);
+    this.pipelineOutputPanel.add(this.pipelineActionSelect);
     this.listPanel.add(this.resourceSelect);
     this.listPanel.add(this.resourceRowsPanel);
     this.resourceSelect.visible = false;
@@ -767,6 +770,7 @@ export class CollaborationPanel {
   showPipelineDiagnostics(): void {
     if (this.selectedResourceIndex !== 1 || this.resourcePickerVisible) return;
     this.pipelineOutputPanel.visible = true;
+    this.pipelineDetailsText.visible = false;
     this.pipelineLogText.visible = true;
     this.pipelineLogText.content = `Pipeline diagnostics\n\n${this.pipelineDiagnostics}`;
   }
@@ -1032,6 +1036,7 @@ export class CollaborationPanel {
     this.updateFocusedPaneBorder();
     this.detailTitle.fg = theme.accent;
     this.detailText.fg = theme.muted;
+    this.pipelineDetailsText.fg = theme.muted;
     this.pipelineLogText.fg = theme.muted;
   }
 
@@ -1052,6 +1057,7 @@ export class CollaborationPanel {
     this.diffText.visible = false;
     this.pipelineLogText.visible = false;
     this.pipelineOutputPanel.visible = false;
+    this.pipelineDetailsText.visible = false;
     this.detailText.visible = true;
     this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows);
     this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
@@ -1418,6 +1424,7 @@ export class CollaborationPanel {
     if (!this.provider) return;
     this.selectedPipeline = pipeline;
     this.pipelineOutputPanel.visible = false;
+    this.pipelineDetailsText.visible = false;
     this.pipelineLogText.visible = false;
     this.detailText.content = "Loading pipeline details...";
     try {
@@ -1440,7 +1447,10 @@ export class CollaborationPanel {
         this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
       }
       this.pipelineJobs = details.jobs;
-      this.detailText.content = this.renderPipelineSummary(details);
+      this.pipelineOutputPanel.visible = true;
+      this.pipelineDetailsText.visible = true;
+      this.pipelineDetailsText.content = this.renderPipelineSummary(details);
+      this.detailText.content = "Pipeline details are shown in the output pane.";
       this.pipelineTreeOptions = details.stages.length > 0
         ? details.stages.flatMap((stage) => [
           { kind: "stage" as const, stage },
@@ -1475,9 +1485,12 @@ export class CollaborationPanel {
       this.updatePipelineActionOptions(details);
     } catch (error) {
       const authenticationError = isAuthenticationError(error);
-      this.detailText.content = authenticationError
+      this.pipelineOutputPanel.visible = true;
+      this.pipelineDetailsText.visible = true;
+      this.pipelineDetailsText.content = authenticationError
         ? `Authentication required for ${this.provider.id}.`
         : `Unable to load pipeline details: ${collaborationErrorMessage(error)}`;
+      this.detailText.content = "Unable to load pipeline details. See the output pane.";
       this.pipelineJobSelect.visible = false;
       this.pipelineActionSelect.visible = false;
       this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows);
