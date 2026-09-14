@@ -203,6 +203,7 @@ export type CollaborationQuery = {
   search?: string;
   branch?: string;
   iterationPath?: string;
+  pipelineNames?: string[];
 };
 
 export type CollaborationProviderCapabilities = {

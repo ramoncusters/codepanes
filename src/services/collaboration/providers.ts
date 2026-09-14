@@ -475,11 +475,18 @@ export class GitHubProvider extends CliProvider {
       page: String(page),
     });
     if (query.branch) params.set("branch", query.branch);
-    const response = await runJsonCommand<GitHubWorkflowRunsResponse>("gh", [
+    const args = [
       "api",
       `repos/${this.owner}/${this.repository}/actions/runs?${params}`,
-    ]);
-    const items = response.workflow_runs ?? [];
+    ];
+    if (query.pipelineNames?.length) {
+      const names = query.pipelineNames
+        .map((name) => `.name == ${JSON.stringify(name)}`)
+        .join(" or ");
+      args.push("--jq", `.workflow_runs | map(select(${names}))`);
+    }
+    const response = await runJsonCommand<GitHubWorkflowRunsResponse | GitHubWorkflowRun[]>("gh", args);
+    const items = Array.isArray(response) ? response : response.workflow_runs ?? [];
     return {
       items: items
         .filter((run) => !query.search || (run.name ?? run.display_title ?? "").toLowerCase().includes(query.search.toLowerCase()))
@@ -492,7 +499,10 @@ export class GitHubProvider extends CliProvider {
   describePipelineQuery(query: CollaborationQuery): string {
     const params = new URLSearchParams({ per_page: "30", page: "1" });
     if (query.branch) params.set("branch", query.branch);
-    return `gh api repos/${this.owner}/${this.repository}/actions/runs?${params.toString()}`;
+    const names = query.pipelineNames?.length
+      ? ` --jq '.workflow_runs | map(select(${query.pipelineNames.map((name) => `.name == ${JSON.stringify(name)}`).join(" or ")}))'`
+      : "";
+    return `gh api repos/${this.owner}/${this.repository}/actions/runs?${params.toString()}${names}`;
   }
 
   async getPipeline(id: string): Promise<PipelineDetails> {
@@ -1132,6 +1142,12 @@ export class AzureProvider extends CliProvider {
       "json",
     ];
     if (query.branch) args.splice(-2, 0, "--branch", query.branch);
+    if (query.pipelineNames?.length) {
+      const names = query.pipelineNames
+        .map((name) => `definition.name == '${name.replaceAll("'", "''")}' || name == '${name.replaceAll("'", "''")}'`)
+        .join(" || ");
+      args.splice(-2, 0, "--query", `[?${names}]`);
+    }
     const runs = await runJsonCommand<AzurePipelineRun[]>("az", args);
     return {
       items: runs
@@ -1147,6 +1163,9 @@ export class AzureProvider extends CliProvider {
       `--organization https://dev.azure.com/${this.organization}`,
       `--project ${this.project}`,
       ...(query.branch ? [`--branch ${query.branch}`] : []),
+      ...(query.pipelineNames?.length
+        ? [`--query "[?${query.pipelineNames.map((name) => `definition.name == '${name.replaceAll("'", "''")}' || name == '${name.replaceAll("'", "''")}'`).join(" || ")}]"`]
+        : []),
       "--top 30",
       "--query-order QueueTimeDesc",
     ].join(" ");

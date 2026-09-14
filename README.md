@@ -63,8 +63,10 @@ array. Names are matched exactly, for example:
 }
 ```
 
-Omit `pipelines` to show all pipeline runs. Press `r` in the Collaboration tab
-to refresh the list after changing the configuration.
+The configured names are passed into the provider query where supported. An
+empty or omitted `pipelines` array disables pipeline queries and shows a
+configuration message instead. Press `r` in the Collaboration tab to refresh
+the list after changing the configuration.
 
 The Collaboration tab opens with a resource picker for Pull requests, Pipelines,
 and Issues / Work items. Use `Up`/`Down` and `Enter` to choose a resource,

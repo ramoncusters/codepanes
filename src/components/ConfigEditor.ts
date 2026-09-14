@@ -98,7 +98,7 @@ export class ConfigEditor {
         "  postCreateActions is a project-only list of shell commands run in a new worktree.",
         "  actions is a project-only list of named commands run in the selected worktree.",
         "  pipelines is a project-only list of exact pipeline names shown in Collaboration.",
-        "  Omit pipelines to show all pipeline runs for the project.",
+        "  An empty or omitted pipelines array disables pipeline queries.",
         "  Example: \"pipelines\": [\"CI\", \"Deploy\"].",
         "  Set persistent to true for long-running or watch commands.",
         "  run-command bindings support target, {{worktreeDir}}, and {{worktreeName}} substitution.",

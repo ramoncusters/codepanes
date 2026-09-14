@@ -1069,11 +1069,23 @@ export class CollaborationPanel {
         this.detailText.content = `Pipelines are not available for ${this.provider.id}.`;
         return;
       }
+      if (this.pipelineNames.size === 0) {
+        this.loadedResources.add(index);
+        this.pipelineSelect.options = [];
+        this.pipelineSelect.visible = true;
+        this.pipelineDiagnostics = "No pipelines are configured for this project. Add a non-empty pipelines array to the project configuration.";
+        this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
+        this.detailText.content = "No pipelines are configured for this project.";
+        return;
+      }
       if (!force && this.loadedResources.has(index)) {
         this.pipelineSelect.visible = true;
         this.pipelineDiagnostics = [
           `Provider: ${this.provider.id}`,
-          `Command: ${this.provider.describePipelineQuery?.({ branch: this.activeBranch }) ?? "unavailable"}`,
+          `Command: ${this.provider.describePipelineQuery?.({
+            branch: this.activeBranch,
+            pipelineNames: [...this.pipelineNames],
+          }) ?? "unavailable"}`,
           `Branch filter: ${this.activeBranch ?? "none"}`,
           `Configured names: ${this.pipelineNames.size > 0 ? [...this.pipelineNames].join(", ") : "all"}`,
           `Cached runs after filtering: ${this.pipelineSelect.options.length}`,
@@ -1087,15 +1099,19 @@ export class CollaborationPanel {
       }
       this.detailText.content = "Loading pipeline runs...";
       try {
-        const page = await this.provider.listPipelines({ branch: this.activeBranch });
+        const page = await this.provider.listPipelines({
+          branch: this.activeBranch,
+          pipelineNames: [...this.pipelineNames],
+        });
         if (loadId !== this.resourceLoadId) return;
         this.loadedResources.add(index);
-        const pipelines = this.pipelineNames.size === 0
-          ? page.items
-          : page.items.filter((pipeline) => this.pipelineNames.has(pipeline.name));
+        const pipelines = page.items.filter((pipeline) => this.pipelineNames.has(pipeline.name));
         this.pipelineDiagnostics = [
           `Provider: ${this.provider.id}`,
-          `Command: ${this.provider.describePipelineQuery?.({ branch: this.activeBranch }) ?? "unavailable"}`,
+          `Command: ${this.provider.describePipelineQuery?.({
+            branch: this.activeBranch,
+            pipelineNames: [...this.pipelineNames],
+          }) ?? "unavailable"}`,
           `Branch filter: ${this.activeBranch ?? "none"}`,
           `Configured names: ${this.pipelineNames.size > 0 ? [...this.pipelineNames].join(", ") : "all"}`,
           `Runs returned by provider: ${page.items.length}`,
@@ -1124,7 +1140,10 @@ export class CollaborationPanel {
           ? `Authentication required for ${this.provider.id}.`
           : `Unable to load pipelines: ${collaborationErrorMessage(error)}`;
         this.pipelineDiagnostics = `Provider: ${this.provider.id}\nQuery failed: ${collaborationErrorMessage(error)}`;
-        this.pipelineDiagnostics += `\nCommand: ${this.provider.describePipelineQuery?.({ branch: this.activeBranch }) ?? "unavailable"}`;
+        this.pipelineDiagnostics += `\nCommand: ${this.provider.describePipelineQuery?.({
+          branch: this.activeBranch,
+          pipelineNames: [...this.pipelineNames],
+        }) ?? "unavailable"}`;
         if (authenticationError) this.onAuthenticationRequired(this.provider.id);
       }
       return;
