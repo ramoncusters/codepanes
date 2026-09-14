@@ -127,6 +127,7 @@ export class CollaborationPanel {
   private readonly actionRows: ListItemRow[] = [];
   private readonly listPanel: BoxRenderable;
   private readonly detailPanel: BoxRenderable;
+  private readonly pipelineOutputPanel: BoxRenderable;
   private readonly detailTitle: TextRenderable;
   private readonly detailText: TextRenderable;
   private readonly diffText: TextRenderable;
@@ -222,6 +223,19 @@ export class CollaborationPanel {
       border: true,
       borderStyle: "rounded",
       borderColor: "#2b3c68",
+      backgroundColor: "transparent",
+      visible: false,
+    });
+    this.pipelineOutputPanel = new BoxRenderable(renderer, {
+      flexGrow: 1,
+      flexBasis: 0,
+      flexDirection: "column",
+      padding: 1,
+      border: true,
+      borderStyle: "rounded",
+      borderColor: "#2b3c68",
+      title: "output",
+      titleColor: "#7dd3fc",
       backgroundColor: "transparent",
       visible: false,
     });
@@ -390,12 +404,13 @@ export class CollaborationPanel {
     this.detailPanel.add(this.actionSelect);
     this.detailPanel.add(this.diffModeSelect);
     this.detailPanel.add(this.diffText);
-    this.detailPanel.add(this.pipelineLogText);
+    this.pipelineOutputPanel.add(this.pipelineLogText);
     this.listPanel.add(this.resourceSelect);
     this.listPanel.add(this.resourceRowsPanel);
     this.resourceSelect.visible = false;
     this.panel.add(this.listPanel);
     this.panel.add(this.detailPanel);
+    this.panel.add(this.pipelineOutputPanel);
     this.resourceSelect.on(SelectRenderableEvents.SELECTION_CHANGED, (index) => {
       if (resources[index]) {
         this.selectedResourceIndex = index;
@@ -740,6 +755,7 @@ export class CollaborationPanel {
 
   showPipelineDiagnostics(): void {
     if (this.selectedResourceIndex !== 1 || this.resourcePickerVisible) return;
+    this.pipelineOutputPanel.visible = true;
     this.pipelineLogText.visible = true;
     this.pipelineLogText.content = `Pipeline diagnostics\n\n${this.pipelineDiagnostics}`;
   }
@@ -921,12 +937,13 @@ export class CollaborationPanel {
     this.theme = theme;
     this.panel.backgroundColor = "transparent";
     this.panel.borderColor = theme.border;
-    for (const pane of [this.listPanel, this.detailPanel]) {
+    for (const pane of [this.listPanel, this.detailPanel, this.pipelineOutputPanel]) {
       pane.backgroundColor = theme.background;
       pane.borderColor = theme.border;
     }
     this.listPanel.titleColor = theme.accent;
     this.detailPanel.titleColor = theme.accent;
+    this.pipelineOutputPanel.titleColor = theme.accent;
     this.resourceSelect.backgroundColor = theme.panelBackground;
     this.resourceSelect.focusedBackgroundColor = theme.focusedBackground;
     this.resourceSelect.selectedBackgroundColor = theme.focusedBackground;
@@ -1019,6 +1036,7 @@ export class CollaborationPanel {
     this.diffModeSelect.visible = false;
     this.diffText.visible = false;
     this.pipelineLogText.visible = false;
+    this.pipelineOutputPanel.visible = false;
     this.detailText.visible = true;
     this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows);
     this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
@@ -1063,7 +1081,7 @@ export class CollaborationPanel {
         this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
         this.detailText.content = this.pipelineSelect.options.length > 0
           ? "Select a pipeline run to view stages, jobs, and logs."
-          : "No pipeline runs found. Press D to inspect the pipeline query.";
+          : "No pipeline runs found. Press l to inspect the pipeline query.";
         return;
       }
       this.detailText.content = "Loading pipeline runs...";
@@ -1093,7 +1111,7 @@ export class CollaborationPanel {
         this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
         this.detailText.content = pipelines.length > 0
           ? "Select a pipeline run to view stages, jobs, and logs."
-          : "No pipeline runs found. Press D to inspect the pipeline query.";
+          : "No pipeline runs found. Press l to inspect the pipeline query.";
       } catch (error) {
         if (loadId !== this.resourceLoadId) return;
         const authenticationError = isAuthenticationError(error);
@@ -1308,6 +1326,7 @@ export class CollaborationPanel {
   private async showPipeline(pipeline: Pipeline, propagateError = false): Promise<void> {
     if (!this.provider) return;
     this.selectedPipeline = pipeline;
+    this.pipelineOutputPanel.visible = false;
     this.pipelineLogText.visible = false;
     this.detailText.content = "Loading pipeline details...";
     try {
@@ -1381,10 +1400,12 @@ export class CollaborationPanel {
     const details = this.selectedPipelineDetails;
     if (!details || !this.provider) return;
     if (!details.capabilities.logs || !job.logAvailable) {
+      this.pipelineOutputPanel.visible = true;
       this.pipelineLogText.visible = true;
       this.pipelineLogText.content = "Logs are not available for this job.";
       return;
     }
+    this.pipelineOutputPanel.visible = true;
     this.pipelineLogText.visible = true;
     this.pipelineLogText.content = `Loading log for ${job.name}...`;
     try {
