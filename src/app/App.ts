@@ -1283,4 +1283,10 @@ export async function runApp(): Promise<void> {
   process.once("SIGTERM", () => shutdown("SIGTERM"));
 
   updateTab(0);
+  const initialWorktree = worktreesPanel.activeWorktree;
+  if (initialWorktree) {
+    void openWorktree(initialWorktree, false).catch((error: unknown) => {
+      footerText.content = `Unable to start lazygit: ${String(error)}`;
+    });
+  }
 }

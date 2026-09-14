@@ -138,8 +138,9 @@ Repository-specific commands can run after creating a worktree:
 }
 ```
 
-Set `defaultWorktree` to a worktree branch, name, or path to select it when
-CodePanes starts. If it is omitted, CodePanes selects the `main` branch; if no
+Set `defaultWorktree` to a worktree branch, name, or path to select and
+activate it across all tabs when CodePanes starts, as if Enter was pressed on
+the Worktrees tab. If it is omitted, CodePanes selects the `main` branch; if no
 `main` worktree exists, it uses the first available worktree.
 
 Worktree keybindings can run arbitrary shell commands using the selected
