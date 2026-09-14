@@ -800,6 +800,7 @@ type AzurePipelineRun = {
 type AzureTimelineRecord = {
   id: string;
   name?: string;
+  order?: number;
   type?: string;
   state?: string;
   result?: string | null;
@@ -1335,8 +1336,12 @@ export class AzureProvider extends CliProvider {
       "json",
     ]);
     const records = timeline.records ?? [];
-    const stageRecords = records.filter((record) => record.type?.toLowerCase() === "stage");
-    const jobRecords = records.filter((record) => record.type?.toLowerCase() === "job");
+    const stageRecords = this.orderTimelineRecords(
+      records.filter((record) => record.type?.toLowerCase() === "stage"),
+    );
+    const jobRecords = this.orderTimelineRecords(
+      records.filter((record) => record.type?.toLowerCase() === "job"),
+    );
     const jobs = jobRecords.map((record) => this.mapPipelineJob(record, id));
     const stages = stageRecords.map((record) => ({
       id: record.id,
@@ -1360,6 +1365,18 @@ export class AzureProvider extends CliProvider {
           : [],
       },
     };
+  }
+
+  private orderTimelineRecords(records: AzureTimelineRecord[]): AzureTimelineRecord[] {
+    return records
+      .map((record, index) => ({ record, index }))
+      .sort((left, right) => {
+        if (left.record.order !== undefined && right.record.order !== undefined) {
+          return left.record.order - right.record.order;
+        }
+        return left.index - right.index;
+      })
+      .map(({ record }) => record);
   }
 
   async getPipelineLog(jobId: string): Promise<string> {
