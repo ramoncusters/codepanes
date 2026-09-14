@@ -254,6 +254,10 @@ export class WorktreesPanel {
     return this.select.getSelectedOption()?.value as Worktree | undefined;
   }
 
+  isUpdatingOptions(): boolean {
+    return this.updatingOptions;
+  }
+
   formatTable(worktrees: Worktree[]): string {
     const header = `${"".padEnd(4)}${"WORKTREE".padEnd(18)}│ ${"BRANCH".padEnd(18)}│ REMOTE`;
     const rows = worktrees.map((worktree) => {
@@ -333,6 +337,8 @@ export class WorktreesPanel {
 
   private updateOptions(): void {
     const query = this.searchInput.value.toLowerCase();
+    const selectedPath = (this.select.getSelectedOption()?.value as Worktree | undefined)?.path
+      ?? this.activeWorktreePath;
     const filtered = this.items.filter((worktree) =>
       `${worktree.name ?? path.basename(worktree.path)} ${worktree.branch} ${worktree.path}`.toLowerCase().includes(query),
     );
@@ -345,6 +351,8 @@ export class WorktreesPanel {
     this.updatingOptions = true;
     try {
       this.select.options = options;
+      const selectedIndex = filtered.findIndex((worktree) => worktree.path === selectedPath);
+      if (selectedIndex >= 0) this.select.setSelectedIndex(selectedIndex);
       for (const [index, worktree] of filtered.entries()) {
         const state = {
           cursorSelected: index === this.select.getSelectedIndex(),

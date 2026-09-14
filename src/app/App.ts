@@ -700,6 +700,7 @@ export async function runApp(): Promise<void> {
   });
 
   select.on(SelectRenderableEvents.ITEM_SELECTED, async (_index, option) => {
+    if (worktreesPanel.isUpdatingOptions()) return;
     if (state.worktreeOperationActive) return;
     const target = option.value as Worktree;
     const active = worktreesPanel.activeWorktree;
