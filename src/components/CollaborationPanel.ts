@@ -1073,7 +1073,7 @@ export class CollaborationPanel {
         this.pipelineSelect.visible = true;
         this.pipelineDiagnostics = [
           `Provider: ${this.provider.id}`,
-          `Query: ${this.provider.describePipelineQuery?.({ branch: this.activeBranch }) ?? "unavailable"}`,
+          `Command: ${this.provider.describePipelineQuery?.({ branch: this.activeBranch }) ?? "unavailable"}`,
           `Branch filter: ${this.activeBranch ?? "none"}`,
           `Configured names: ${this.pipelineNames.size > 0 ? [...this.pipelineNames].join(", ") : "all"}`,
           `Cached runs after filtering: ${this.pipelineSelect.options.length}`,
@@ -1095,6 +1095,7 @@ export class CollaborationPanel {
           : page.items.filter((pipeline) => this.pipelineNames.has(pipeline.name));
         this.pipelineDiagnostics = [
           `Provider: ${this.provider.id}`,
+          `Command: ${this.provider.describePipelineQuery?.({ branch: this.activeBranch }) ?? "unavailable"}`,
           `Branch filter: ${this.activeBranch ?? "none"}`,
           `Configured names: ${this.pipelineNames.size > 0 ? [...this.pipelineNames].join(", ") : "all"}`,
           `Runs returned by provider: ${page.items.length}`,
@@ -1123,7 +1124,7 @@ export class CollaborationPanel {
           ? `Authentication required for ${this.provider.id}.`
           : `Unable to load pipelines: ${collaborationErrorMessage(error)}`;
         this.pipelineDiagnostics = `Provider: ${this.provider.id}\nQuery failed: ${collaborationErrorMessage(error)}`;
-        this.pipelineDiagnostics += `\nQuery: ${this.provider.describePipelineQuery?.({ branch: this.activeBranch }) ?? "unavailable"}`;
+        this.pipelineDiagnostics += `\nCommand: ${this.provider.describePipelineQuery?.({ branch: this.activeBranch }) ?? "unavailable"}`;
         if (authenticationError) this.onAuthenticationRequired(this.provider.id);
       }
       return;
