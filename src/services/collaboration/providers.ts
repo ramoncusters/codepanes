@@ -489,6 +489,12 @@ export class GitHubProvider extends CliProvider {
     };
   }
 
+  describePipelineQuery(query: CollaborationQuery): string {
+    const params = new URLSearchParams({ per_page: "30", page: "1" });
+    if (query.branch) params.set("branch", query.branch);
+    return `gh api repos/${this.owner}/${this.repository}/actions/runs?${params.toString()}`;
+  }
+
   async getPipeline(id: string): Promise<PipelineDetails> {
     const [run, jobsResponse] = await Promise.all([
       runJsonCommand<GitHubWorkflowRun>("gh", [
@@ -1133,6 +1139,17 @@ export class AzureProvider extends CliProvider {
         .map((run) => this.mapPipeline(run)),
       hasNextPage: false,
     };
+  }
+
+  describePipelineQuery(query: CollaborationQuery): string {
+    return [
+      "az pipelines runs list",
+      `--organization https://dev.azure.com/${this.organization}`,
+      `--project ${this.project}`,
+      ...(query.branch ? [`--branch ${query.branch}`] : []),
+      "--top 30",
+      "--query-order QueueTimeDesc",
+    ].join(" ");
   }
 
   async listIssues(query: CollaborationQuery): Promise<CollaborationPage<Issue>> {

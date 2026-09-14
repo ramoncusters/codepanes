@@ -241,6 +241,7 @@ export interface CollaborationProvider {
   abandonPullRequest(id: string): Promise<PullRequestDetails>;
 
   listPipelines(query: CollaborationQuery): Promise<CollaborationPage<Pipeline>>;
+  describePipelineQuery?(query: CollaborationQuery): string;
   getPipeline(id: string): Promise<PipelineDetails>;
   getPipelineLog(jobId: string): Promise<string>;
   runPipeline(id: string): Promise<void>;
