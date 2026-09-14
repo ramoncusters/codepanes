@@ -1134,8 +1134,6 @@ export class AzureProvider extends CliProvider {
       `https://dev.azure.com/${this.organization}`,
       "--project",
       this.project,
-      "--top",
-      "30",
       "--query-order",
       "QueueTimeDesc",
       "--output",
@@ -1166,7 +1164,6 @@ export class AzureProvider extends CliProvider {
       ...(query.pipelineNames?.length
         ? [`--query "[?${query.pipelineNames.map((name) => `definition.name == '${name.replaceAll("'", "''")}' || name == '${name.replaceAll("'", "''")}'`).join(" || ")}]"`]
         : []),
-      "--top 30",
       "--query-order QueueTimeDesc",
     ].join(" ");
   }
