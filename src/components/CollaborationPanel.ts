@@ -1062,7 +1062,6 @@ export class CollaborationPanel {
     this.diffModeSelect.visible = false;
     this.diffText.visible = false;
     this.pipelineLogText.visible = false;
-    this.pipelineOutputPanel.visible = false;
     this.pipelineDetailsText.visible = false;
     this.detailText.visible = true;
     this.syncRows(this.pullRequestSelect, this.pullRequestRowsPanel, this.pullRequestRows);
@@ -1432,7 +1431,10 @@ export class CollaborationPanel {
     this.pipelineOutputPanel.visible = false;
     this.pipelineDetailsText.visible = false;
     this.pipelineLogText.visible = false;
-    this.detailText.content = "Loading pipeline details...";
+    this.pipelineOutputPanel.visible = true;
+    this.pipelineDetailsText.visible = true;
+    this.pipelineDetailsText.content = "Loading pipeline details...";
+    this.detailText.visible = false;
     try {
       const details = await this.provider.getPipeline(pipeline.id);
       this.selectedPipeline = details;
@@ -1456,7 +1458,7 @@ export class CollaborationPanel {
       this.pipelineOutputPanel.visible = true;
       this.pipelineDetailsText.visible = true;
       this.pipelineDetailsText.content = this.renderPipelineSummary(details);
-      this.detailText.content = "Pipeline details are shown in the output pane.";
+      this.detailText.visible = false;
       this.pipelineTreeOptions = details.stages.length > 0
         ? details.stages.flatMap((stage) => [
           { kind: "stage" as const, stage },
@@ -1496,7 +1498,7 @@ export class CollaborationPanel {
       this.pipelineDetailsText.content = authenticationError
         ? `Authentication required for ${this.provider.id}.`
         : `Unable to load pipeline details: ${collaborationErrorMessage(error)}`;
-      this.detailText.content = "Unable to load pipeline details. See the output pane.";
+      this.detailText.visible = false;
       this.pipelineJobSelect.visible = false;
       this.pipelineActionSelect.visible = false;
       this.syncRows(this.pipelineJobSelect, this.pipelineJobRowsPanel, this.pipelineJobRows);
