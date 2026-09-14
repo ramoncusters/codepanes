@@ -15,6 +15,7 @@ export class TerminalPanel {
   readonly terminal: EmbeddedTerminalRenderable;
   private currentPty: IPty | null = null;
   private terminalFocused = false;
+  private ptyGeneration = 0;
 
   constructor(
     private readonly renderer: CliRenderer,
@@ -54,6 +55,7 @@ export class TerminalPanel {
   }
 
   stop(): void {
+    this.ptyGeneration += 1;
     if (this.currentPty) {
       this.currentPty.kill();
       this.currentPty = null;
@@ -62,9 +64,10 @@ export class TerminalPanel {
 
   async open(worktree: Worktree, focus = true): Promise<void> {
     this.stop();
+    const generation = this.ptyGeneration;
     this.terminal.write("\x1b[2J\x1b[3J\x1b[H");
     await this.renderer.idle();
-    if (this.renderer.isDestroyed) return;
+    if (this.renderer.isDestroyed || generation !== this.ptyGeneration) return;
 
     try {
       this.currentPty = spawnPty("lazygit", [], {
@@ -74,9 +77,11 @@ export class TerminalPanel {
         env: { TERM: "xterm-256color", COLORTERM: "", SHELL: this.shell },
       });
       this.currentPty.onData((data) => {
+        if (generation !== this.ptyGeneration) return;
         this.terminal.write(data);
       });
       this.currentPty.onExit(({ exitCode }) => {
+        if (generation !== this.ptyGeneration) return;
         this.currentPty = null;
         this.terminalFocused = false;
         this.onFocusChange(false);
