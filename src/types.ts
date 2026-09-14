@@ -41,6 +41,7 @@ export type Config = {
     string,
     {
       shell?: string;
+      defaultWorktree?: string;
       keybindings?: TabKeybindings;
       postCreateActions?: string[];
       actions?: ProjectAction[];

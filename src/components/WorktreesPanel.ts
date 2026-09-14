@@ -68,6 +68,7 @@ export class WorktreesPanel {
     renderer: CliRenderer,
     initialWorktrees: Worktree[],
     backgroundColor: string,
+    defaultWorktree?: string,
   ) {
     this.renderer = renderer;
     this.theme = {
@@ -84,7 +85,14 @@ export class WorktreesPanel {
       muted: "#aab7d8",
     };
     this.worktrees = initialWorktrees;
-    this.activeWorktreePath = this.items[0]?.path;
+    const configuredWorktree = defaultWorktree
+      ? this.items.find((worktree) =>
+        worktree.path === defaultWorktree
+        || worktree.branch === defaultWorktree
+        || worktree.name === defaultWorktree)
+      : undefined;
+    const mainWorktree = this.items.find((worktree) => worktree.branch === "main");
+    this.activeWorktreePath = (configuredWorktree ?? mainWorktree ?? this.items[0])?.path;
     this.panel = new BoxRenderable(renderer, {
       paddingTop: 1,
       flexGrow: 1,

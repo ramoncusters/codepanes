@@ -121,6 +121,7 @@ Repository-specific commands can run after creating a worktree:
   "projects": {
     "my-project": {
       "shell": "zsh",
+      "defaultWorktree": "feature/foo",
       "keybindings": {
         "Worktrees": {},
         "Lazygit": {},
@@ -136,6 +137,10 @@ Repository-specific commands can run after creating a worktree:
   }
 }
 ```
+
+Set `defaultWorktree` to a worktree branch, name, or path to select it when
+CodePanes starts. If it is omitted, CodePanes selects the `main` branch; if no
+`main` worktree exists, it uses the first available worktree.
 
 Worktree keybindings can run arbitrary shell commands using the selected
 worktree path:

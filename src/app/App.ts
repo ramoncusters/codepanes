@@ -122,7 +122,12 @@ export async function runApp(): Promise<void> {
   const configEditorRenderable = configEditor.editor;
   root.add(configEditorPanel);
 
-  const worktreesPanel = new WorktreesPanel(renderer, worktrees, terminalBackground);
+  const worktreesPanel = new WorktreesPanel(
+    renderer,
+    worktrees,
+    terminalBackground,
+    projectConfig.defaultWorktree,
+  );
   const actionsPanel = new ActionsPanel(
     renderer,
     projectConfig.actions ?? [],
