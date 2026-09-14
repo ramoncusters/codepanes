@@ -581,6 +581,11 @@ export class CollaborationPanel {
       select.visible = false;
       return;
     }
+    if (select === this.pipelineJobSelect || select === this.pipelineActionSelect) {
+      panel.visible = options.length > 0 && this.pipelineOutputPanel.visible;
+      select.visible = false;
+      return;
+    }
     if (select === this.pullRequestSelect) {
       // Pull requests use the selector's native rows so keyboard navigation and
       // the provider group headers share one visible list.
@@ -678,13 +683,13 @@ export class CollaborationPanel {
     } else if (this.focusedSection === "issue-views" && this.issueSelect.visible) {
       this.focusedSection = "issues";
       this.issueSelect.focus();
-    } else if (this.focusedSection === "pipelines" && this.pipelineJobSelect.visible) {
+    } else if (this.focusedSection === "pipelines" && this.pipelineJobSelect.options.length > 0) {
       this.focusedSection = "pipeline-jobs";
       this.pipelineJobSelect.focus();
-    } else if (this.focusedSection === "pipelines" && this.pipelineActionSelect.visible) {
+    } else if (this.focusedSection === "pipelines" && this.pipelineActionSelect.options.length > 0) {
       this.focusedSection = "pipeline-actions";
       this.pipelineActionSelect.focus();
-    } else if (this.focusedSection === "pipeline-jobs" && this.pipelineActionSelect.visible) {
+    } else if (this.focusedSection === "pipeline-jobs" && this.pipelineActionSelect.options.length > 0) {
       this.focusedSection = "pipeline-actions";
       this.pipelineActionSelect.focus();
     } else if (this.focusedSection === "pull-requests" && this.commentSelect.visible) {
@@ -712,7 +717,7 @@ export class CollaborationPanel {
 
   focusPrevious(): void {
     if (this.focusedSection === "pipeline-jobs") {
-      if (this.pipelineActionSelect.visible) {
+      if (this.pipelineActionSelect.options.length > 0) {
         this.focusedSection = "pipeline-actions";
         this.pipelineActionSelect.focus();
       } else {
@@ -720,7 +725,7 @@ export class CollaborationPanel {
         this.pipelineSelect.focus();
       }
     } else if (this.focusedSection === "pipeline-actions") {
-      if (this.pipelineJobSelect.visible) {
+      if (this.pipelineJobSelect.options.length > 0) {
         this.focusedSection = "pipeline-jobs";
         this.pipelineJobSelect.focus();
       } else {
