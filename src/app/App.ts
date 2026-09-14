@@ -665,6 +665,7 @@ export async function runApp(): Promise<void> {
         ["j/k", "navigate"],
         ["Enter", "open/expand"],
         ["[/]", "cycle iterations"],
+        ["D", "pipeline diagnostics"],
         ["Esc", "resources"],
         ["r", "refresh"],
         ["Tab", "switch tabs"],
@@ -1136,6 +1137,11 @@ export async function runApp(): Promise<void> {
       if (key.name === "r") {
         key.preventDefault();
         collaborationPanel.retryCurrentResource();
+        return;
+      }
+      if (key.name === "d" || key.name === "D") {
+        key.preventDefault();
+        collaborationPanel.showPipelineDiagnostics();
         return;
       }
       if (key.name === "l") {

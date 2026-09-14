@@ -143,6 +143,7 @@ export class CollaborationPanel {
   private selectedIssueDetails: IssueDetails | undefined;
   private pipelineJobs: PipelineJob[] = [];
   private pipelineTreeOptions: PipelineTreeOption[] = [];
+  private pipelineDiagnostics = "No pipeline query has run yet.";
   private selectedComment: PullRequestComment | undefined;
   private comments: PullRequestComment[] = [];
   private selectedResourceIndex = 0;
@@ -737,6 +738,12 @@ export class CollaborationPanel {
     );
   }
 
+  showPipelineDiagnostics(): void {
+    if (this.selectedResourceIndex !== 1 || this.resourcePickerVisible) return;
+    this.pipelineLogText.visible = true;
+    this.pipelineLogText.content = `Pipeline diagnostics\n\n${this.pipelineDiagnostics}`;
+  }
+
   activateSelectedPullRequest(): void {
     if (this.resourcePickerVisible) {
       this.resourcePickerVisible = false;
@@ -1030,6 +1037,7 @@ export class CollaborationPanel {
     this.selectedIssueDetails = undefined;
     this.pipelineJobs = [];
     this.pipelineTreeOptions = [];
+    this.pipelineDiagnostics = "No pipeline query has run yet.";
     this.selectedComment = undefined;
     this.comments = [];
     this.issueIterations = [];
@@ -1045,10 +1053,17 @@ export class CollaborationPanel {
       }
       if (!force && this.loadedResources.has(index)) {
         this.pipelineSelect.visible = true;
+        this.pipelineDiagnostics = [
+          `Provider: ${this.provider.id}`,
+          `Branch filter: ${this.activeBranch ?? "none"}`,
+          `Configured names: ${this.pipelineNames.size > 0 ? [...this.pipelineNames].join(", ") : "all"}`,
+          `Cached runs after filtering: ${this.pipelineSelect.options.length}`,
+          "Refresh with r to run the provider query again.",
+        ].join("\n");
         this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
         this.detailText.content = this.pipelineSelect.options.length > 0
           ? "Select a pipeline run to view stages, jobs, and logs."
-          : "No pipeline runs found.";
+          : "No pipeline runs found. Press D to inspect the pipeline query.";
         return;
       }
       this.detailText.content = "Loading pipeline runs...";
@@ -1059,6 +1074,16 @@ export class CollaborationPanel {
         const pipelines = this.pipelineNames.size === 0
           ? page.items
           : page.items.filter((pipeline) => this.pipelineNames.has(pipeline.name));
+        this.pipelineDiagnostics = [
+          `Provider: ${this.provider.id}`,
+          `Branch filter: ${this.activeBranch ?? "none"}`,
+          `Configured names: ${this.pipelineNames.size > 0 ? [...this.pipelineNames].join(", ") : "all"}`,
+          `Runs returned by provider: ${page.items.length}`,
+          `Runs after name filter: ${pipelines.length}`,
+          page.items.length > 0
+            ? `Returned names: ${page.items.map((pipeline) => pipeline.name).join(", ")}`
+            : "Returned names: none",
+        ].join("\n");
         this.pipelineSelect.options = pipelines.map((pipeline) => ({
           name: pipeline.name,
           description: pipeline.status,
@@ -1068,13 +1093,14 @@ export class CollaborationPanel {
         this.syncRows(this.pipelineSelect, this.pipelineRowsPanel, this.pipelineRows);
         this.detailText.content = pipelines.length > 0
           ? "Select a pipeline run to view stages, jobs, and logs."
-          : "No pipeline runs found.";
+          : "No pipeline runs found. Press D to inspect the pipeline query.";
       } catch (error) {
         if (loadId !== this.resourceLoadId) return;
         const authenticationError = isAuthenticationError(error);
         this.detailText.content = authenticationError
           ? `Authentication required for ${this.provider.id}.`
           : `Unable to load pipelines: ${collaborationErrorMessage(error)}`;
+        this.pipelineDiagnostics = `Provider: ${this.provider.id}\nQuery failed: ${collaborationErrorMessage(error)}`;
         if (authenticationError) this.onAuthenticationRequired(this.provider.id);
       }
       return;

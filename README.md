@@ -73,8 +73,10 @@ details, `o` to open the selected item in the browser, and `r` to refresh the
 selected resource. Enter is intentionally inactive for pull requests. Enter on
 a pipeline expands its stages and jobs as a status tree; Enter on an issue or
 work item expands its details and child items. On the issue view, `[` and `]`
-cycle between the backlog and available sprint/iteration filters. Provider
-actions prompt for confirmation.
+cycle between the backlog and available sprint/iteration filters. Press `D` in
+the Pipelines view to open diagnostics showing the provider query context,
+returned runs, and configured-name filtering. Provider actions prompt for
+confirmation.
 GitHub and Azure operations report authentication, permission, rate-limit,
 offline, and network failures separately; sign in with the corresponding CLI
 when authentication is requested.
