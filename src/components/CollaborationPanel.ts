@@ -573,6 +573,11 @@ export class CollaborationPanel {
         );
       }
     }
+    if (select === this.pipelineSelect) {
+      panel.visible = options.length > 0 && !this.resourcePickerVisible && this.selectedResourceIndex === 1;
+      select.visible = false;
+      return;
+    }
     if (select === this.pullRequestSelect) {
       // Pull requests use the selector's native rows so keyboard navigation and
       // the provider group headers share one visible list.
@@ -656,7 +661,7 @@ export class CollaborationPanel {
     if (this.focusedSection === "resources" && this.pullRequestSelect.visible) {
       this.focusedSection = "pull-requests";
       this.pullRequestSelect.focus();
-    } else if (this.focusedSection === "resources" && this.pipelineSelect.visible) {
+    } else if (this.focusedSection === "resources" && this.pipelineSelect.options.length > 0) {
       this.focusedSection = "pipelines";
       this.pipelineSelect.focus();
     } else if (this.focusedSection === "resources" && this.issueSelect.visible) {
