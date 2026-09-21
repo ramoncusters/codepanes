@@ -13,7 +13,13 @@ export function interactiveShellArgs(shell: string): string[] {
 }
 
 export function interactiveShellEnvironment(shell: string): Record<string, string> {
-  return path.basename(shell).toLowerCase() === "sh" ? { ENV: "" } : {};
+  return {
+    ENV: "",
+    PS1: "",
+    PS2: "",
+    PROMPT: "",
+    RPROMPT: "",
+  };
 }
 
 export function expandWorktreeCommand(command: string, worktreeDir: string, worktreeName: string): string {

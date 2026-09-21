@@ -89,7 +89,9 @@ Post-create actions and configured actions use the process's `$SHELL` by
 default, falling back to `sh`, and run in an interactive shell without loading
 user startup files. CodePanes uses each supported shell's no-startup-files
 option (or clears `ENV` for `sh`); this prevents prompt frameworks and other
-shell plugins from writing initialization code into the output pane. Other
+shell plugins from writing initialization code into the output pane. Prompt
+variables are also cleared before launching the command so nested shells, such
+as those used by task runners, cannot inherit Powerlevel10k prompt text. Other
 shells receive their normal interactive `-i` argument. Set `shell` globally, or
 override it for an individual project, to choose another shell such as `zsh`:
 
