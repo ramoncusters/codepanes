@@ -91,7 +91,7 @@ export class ConfigEditor {
         "projects",
         "  Project settings are keyed by the repository root directory name.",
         "  Project keybindings use the same Global/Worktrees/Lazygit/Actions structure.",
-        "  shell selects the executable used for postCreateActions (default: sh).",
+        "  shell selects the executable used for commands (default: $SHELL, then sh).",
         "  defaultWorktree selects the initial app-wide worktree by branch, name, or path.",
         "  It is activated for all tabs as if Enter was pressed. If omitted,",
         "  CodePanes selects the main branch, then the first worktree.",

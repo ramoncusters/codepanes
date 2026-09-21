@@ -59,7 +59,7 @@ export async function runApp(): Promise<void> {
   const projectRoot = await bareRoot(cwd);
   const currentProjectName = projectName(projectRoot);
   const projectConfig = config.projects?.[currentProjectName] ?? {};
-  const commandShell = projectConfig.shell ?? config.shell ?? "sh";
+  const commandShell = projectConfig.shell ?? config.shell ?? process.env.SHELL ?? "sh";
   const getKeybindings = createKeybindingResolver(config, currentProjectName);
   let worktrees = await getWorktrees(cwd);
   const fallbackTerminalBackground = "#0b1020";
