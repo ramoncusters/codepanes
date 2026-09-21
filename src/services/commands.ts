@@ -4,6 +4,14 @@ import { spawnPty } from "./pty.js";
 
 export type CommandOutput = (data: string) => void;
 
+export function interactiveShellArgs(shell: string): string[] {
+  const shellName = path.basename(shell).toLowerCase();
+  if (shellName === "zsh") return ["-f", "-i"];
+  if (shellName === "bash") return ["--noprofile", "--norc", "-i"];
+  if (shellName === "fish") return ["--no-config", "-i"];
+  return ["-i"];
+}
+
 export function expandWorktreeCommand(command: string, worktreeDir: string, worktreeName: string): string {
   const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
   return command
@@ -119,7 +127,7 @@ export function runInteractiveCommand(
   return new Promise((resolve, reject) => {
     const shellName = path.basename(shell).toLowerCase();
     const exitCommand = shellName === "fish" ? "set code $status; exit $code" : "code=$?; exit $code";
-    const child = spawnPty(shell, ["-i"], {
+    const child = spawnPty(shell, interactiveShellArgs(shell), {
       cwd: options.cwd,
       cols: options.cols,
       rows: options.rows,

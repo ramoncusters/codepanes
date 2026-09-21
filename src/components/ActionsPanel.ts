@@ -6,7 +6,7 @@ import {
   type TerminalColors,
 } from "@opentui/core";
 import type { IPty } from "node-pty";
-import { expandWorktreeCommand } from "../services/commands.js";
+import { expandWorktreeCommand, interactiveShellArgs } from "../services/commands.js";
 import { spawnPty } from "../services/pty.js";
 import type { ProjectAction, Worktree } from "../types.js";
 import type { Theme } from "../services/themes.js";
@@ -210,7 +210,7 @@ export class ActionsPanel {
     output.clear();
     let actionPty: IPty;
     try {
-      actionPty = spawnPty(this.shell, ["-i"], {
+      actionPty = spawnPty(this.shell, interactiveShellArgs(this.shell), {
         cwd: worktree.path,
         cols: Math.max(20, output.terminal.width),
         rows: Math.max(8, output.terminal.height),
