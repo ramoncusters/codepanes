@@ -6,7 +6,11 @@ import {
   type TerminalColors,
 } from "@opentui/core";
 import type { IPty } from "node-pty";
-import { expandWorktreeCommand, interactiveShellArgs } from "../services/commands.js";
+import {
+  expandWorktreeCommand,
+  interactiveShellArgs,
+  interactiveShellEnvironment,
+} from "../services/commands.js";
 import { spawnPty } from "../services/pty.js";
 import type { ProjectAction, Worktree } from "../types.js";
 import type { Theme } from "../services/themes.js";
@@ -215,7 +219,11 @@ export class ActionsPanel {
         cols: Math.max(20, output.terminal.width),
         rows: Math.max(8, output.terminal.height),
         name: "xterm-256color",
-        env: { SHELL: this.shell, TERM: "xterm-256color" },
+        env: {
+          SHELL: this.shell,
+          TERM: "xterm-256color",
+          ...interactiveShellEnvironment(this.shell),
+        },
       });
     } catch (error) {
       this.statuses.set(actionIndex, "failed");

@@ -12,6 +12,10 @@ export function interactiveShellArgs(shell: string): string[] {
   return ["-i"];
 }
 
+export function interactiveShellEnvironment(shell: string): Record<string, string> {
+  return path.basename(shell).toLowerCase() === "sh" ? { ENV: "" } : {};
+}
+
 export function expandWorktreeCommand(command: string, worktreeDir: string, worktreeName: string): string {
   const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
   return command
@@ -132,7 +136,7 @@ export function runInteractiveCommand(
       cols: options.cols,
       rows: options.rows,
       name: "xterm-256color",
-      env: { SHELL: shell, TERM: "xterm-256color" },
+      env: { SHELL: shell, TERM: "xterm-256color", ...interactiveShellEnvironment(shell) },
     });
     child.onData(onOutput);
     child.onExit(({ exitCode, signal }) => {

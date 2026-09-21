@@ -86,12 +86,12 @@ offline, and network failures separately; sign in with the corresponding CLI
 when authentication is requested.
 
 Post-create actions and configured actions use `sh` by default and run in an
-interactive shell. CodePanes does not load user startup files for `zsh`,
-`bash`, or `fish`, using each shell's no-startup-files option; this prevents
-prompt frameworks and other shell plugins from writing initialization code into
-the output pane. Other shells receive their normal interactive `-i` argument.
-Set `shell` globally, or override it for an individual project, to use another
-shell such as `zsh`:
+interactive shell without loading user startup files. CodePanes uses each
+supported shell's no-startup-files option (or clears `ENV` for `sh`); this
+prevents prompt frameworks and other shell plugins from writing initialization
+code into the output pane. Other shells receive their normal interactive `-i`
+argument. Set `shell` globally, or override it for an individual project, to
+use another shell such as `zsh`:
 
 Press `t` to open the floating theme switcher. Moving through the theme list
 previews themes immediately. Press `Enter` on a theme and confirm with `y` to
