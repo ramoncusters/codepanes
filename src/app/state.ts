@@ -9,6 +9,7 @@ export type PromptMode =
   | "delete-remote"
   | "authenticate"
   | "apply-theme"
+  | "editor-fallback"
   | "switch-actions"
   | "collaboration-comment"
   | "collaboration-action"

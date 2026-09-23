@@ -36,6 +36,7 @@ export type ProjectAction = {
 export type Config = {
   theme?: string;
   shell?: string;
+  editor?: string;
   globalKeybindings?: TabKeybindings;
   projects?: Record<
     string,

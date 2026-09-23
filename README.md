@@ -44,6 +44,19 @@ binding has a display `name`. Press `?` on the Worktrees tab to view its binding
 The `Global` bindings apply on every tab. On the Lazygit tab, `?` is passed
 through to Lazygit rather than opening CodePanes keybinding help.
 
+Set the top-level `editor` option to choose the executable used to edit this file.
+If omitted, CodePanes uses `$VISUAL`, then `$EDITOR`, then `vim`:
+
+```json
+{
+  "editor": "nvim"
+}
+```
+
+The editor runs directly in a PTY without loading shell startup files. If the
+configured editor cannot be started or exits unsuccessfully, CodePanes reports
+the invalid setting and asks whether to continue with `vim`.
+
 Project-specific settings are keyed by the repository root directory name, so
 configuration does not require an absolute path or a package manager. For a
 bare repository ending in `.git`, the `.git` suffix is removed from the
@@ -115,6 +128,7 @@ Repository-specific commands can run after creating a worktree:
 
 ```json
 {
+  "editor": "nvim",
   "globalKeybindings": {
     "Global": {
       "C": { "name": "Edit configuration", "action": "edit-config" },

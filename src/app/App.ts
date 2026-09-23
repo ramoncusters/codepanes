@@ -60,6 +60,8 @@ export async function runApp(): Promise<void> {
   const currentProjectName = projectName(projectRoot);
   const projectConfig = config.projects?.[currentProjectName] ?? {};
   const commandShell = projectConfig.shell ?? config.shell ?? process.env.SHELL ?? "sh";
+  const editorShell = process.env.SHELL ?? commandShell;
+  const configEditorCommand = config.editor ?? process.env.VISUAL ?? process.env.EDITOR ?? "vim";
   const getKeybindings = createKeybindingResolver(config, currentProjectName);
   let worktrees = await getWorktrees(cwd);
   const fallbackTerminalBackground = "#0b1020";
@@ -114,12 +116,21 @@ export async function runApp(): Promise<void> {
     () => {
       if (state.configEditorActive) closeConfigEditor();
     },
-    commandShell,
+    (message) => {
+      footerText.content = message;
+    },
+    (command, fallback) => {
+      pendingEditorFallback = fallback;
+      openPrompt("editor-fallback", `Editor "${command}" could not be started. Use vim instead? Type y or n:`);
+    },
+    editorShell,
+    configEditorCommand,
     terminalBackground,
   );
   const configEditorPanel = configEditor.panel;
   const configInstructionsPanel = configEditor.instructionsPanel;
   const configEditorRenderable = configEditor.editor;
+  let pendingEditorFallback: (() => void) | null = null;
   root.add(configEditorPanel);
 
   const worktreesPanel = new WorktreesPanel(
@@ -283,6 +294,7 @@ export async function runApp(): Promise<void> {
   const closePrompt = (): void => {
     state.promptActive = false;
     state.promptMode = null;
+    pendingEditorFallback = null;
     state.pendingWorktreeSelection = null;
     promptPanel.visible = false;
     promptInput.blur();
@@ -396,6 +408,7 @@ export async function runApp(): Promise<void> {
       | "delete-remote"
       | "authenticate"
       | "switch-actions"
+      | "editor-fallback"
       | "collaboration-comment"
       | "collaboration-action",
     label: string,
@@ -739,6 +752,22 @@ export async function runApp(): Promise<void> {
   promptInput.on(InputRenderableEvents.ENTER, () => {
     const value = promptInput.value.trim();
     const mode = state.promptMode;
+    if (mode === "editor-fallback") {
+      const answer = value.toLowerCase();
+      if (answer !== "y" && answer !== "n") {
+        footerText.content = "Please type y or n to choose whether to use vim.";
+        return;
+      }
+      const fallback = pendingEditorFallback;
+      pendingEditorFallback = null;
+      closePrompt();
+      if (answer === "y") {
+        fallback?.();
+      } else {
+        closeConfigEditor();
+      }
+      return;
+    }
     if (mode === "apply-theme") {
       const answer = value.toLowerCase();
       if (answer !== "y" && answer !== "n") {

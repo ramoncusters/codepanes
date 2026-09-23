@@ -20,7 +20,10 @@ export class ConfigEditor {
     private readonly configPath: string,
     private readonly repositoryRoot: string,
     private readonly onExit: () => void,
+    private readonly onError: (message: string) => void,
+    private readonly onFallbackRequest: (command: string, fallback: () => void) => void,
     private readonly shell: string,
+    private readonly editorCommand: string,
     backgroundColor: string,
   ) {
     this.panel = new BoxRenderable(renderer, {
@@ -55,6 +58,7 @@ export class ConfigEditor {
     this.instructionsText = new TextRenderable(renderer, {
       content: [
         "Configuration file",
+        "  editor selects the editor executable. It defaults to $VISUAL, then $EDITOR, then vim.",
         "",
         "The file is JSON and is stored at ~/.config/codepanes/config.json.",
         "Keybindings use: { \"key\": { \"name\": \"Label\", \"action\": \"action-id\" } }",
@@ -143,17 +147,33 @@ export class ConfigEditor {
     this.editor.write("\x1b[2J\x1b[3J\x1b[H");
     await this.renderer.idle();
     if (this.renderer.isDestroyed) return;
-    this.configPty = spawnPty("vim", [this.configPath], {
-      cols: Math.max(20, this.editor.width),
-      rows: Math.max(8, this.editor.height),
-      cwd: this.repositoryRoot,
-      env: { TERM: "vt100", COLORTERM: "", SHELL: this.shell },
-    });
-    this.configPty.onData((data) => this.editor.write(data));
-    this.configPty.onExit(() => {
-      this.configPty = null;
-      this.onExit();
-    });
+    const launch = (command: string, fallback: boolean): void => {
+      const pty = spawnPty(command, [this.configPath], {
+        name: "xterm-256color",
+        cols: Math.max(20, this.editor.width),
+        rows: Math.max(8, this.editor.height),
+        cwd: this.repositoryRoot,
+        env: { TERM: "xterm-256color", COLORTERM: "", SHELL: this.shell },
+      });
+      this.configPty = pty;
+      pty.onData((data) => this.editor.write(data));
+      pty.onExit(({ exitCode, signal }) => {
+        if (this.configPty !== pty) return;
+        this.configPty = null;
+        if (!fallback && (signal || exitCode !== 0) && command !== "vim") {
+          this.onFallbackRequest(command, () => {
+            this.editor.write("\x1b[2J\x1b[3J\x1b[H");
+            launch("vim", true);
+          });
+          return;
+        }
+        if (fallback && (signal || exitCode !== 0)) {
+          this.onError(`Unable to start the configured editor or the vim fallback: ${signal ?? `exit code ${exitCode}`}.`);
+        }
+        this.onExit();
+      });
+    };
+    launch(this.editorCommand, false);
   }
 
   close(): void {
