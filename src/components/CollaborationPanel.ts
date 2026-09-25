@@ -1,5 +1,6 @@
 import {
   BoxRenderable,
+  ScrollBoxRenderable,
   SelectRenderable,
   SelectRenderableEvents,
   TextRenderable,
@@ -110,15 +111,15 @@ export class CollaborationPanel {
   private readonly commentSelect: SelectRenderable;
   private readonly actionSelect: SelectRenderable;
   private readonly resourceRowsPanel: BoxRenderable;
-  private readonly pullRequestRowsPanel: BoxRenderable;
-  private readonly pipelineRowsPanel: BoxRenderable;
-  private readonly issueRowsPanel: BoxRenderable;
+  private readonly pullRequestRowsPanel: ScrollBoxRenderable;
+  private readonly pipelineRowsPanel: ScrollBoxRenderable;
+  private readonly issueRowsPanel: ScrollBoxRenderable;
   private readonly issueViewRowsPanel: BoxRenderable;
-  private readonly issueChildRowsPanel: BoxRenderable;
-  private readonly pipelineJobRowsPanel: BoxRenderable;
-  private readonly pipelineActionRowsPanel: BoxRenderable;
-  private readonly commentRowsPanel: BoxRenderable;
-  private readonly actionRowsPanel: BoxRenderable;
+  private readonly issueChildRowsPanel: ScrollBoxRenderable;
+  private readonly pipelineJobRowsPanel: ScrollBoxRenderable;
+  private readonly pipelineActionRowsPanel: ScrollBoxRenderable;
+  private readonly commentRowsPanel: ScrollBoxRenderable;
+  private readonly actionRowsPanel: ScrollBoxRenderable;
   private readonly resourceRows: ListItemRow[] = [];
   private readonly pullRequestRows: ListItemRow[] = [];
   private readonly pipelineRows: ListItemRow[] = [];
@@ -379,12 +380,12 @@ export class CollaborationPanel {
       showDescription: true,
       showSelectionIndicator: true,
     });
-    this.resourceRowsPanel = this.createRowsPanel();
+    this.resourceRowsPanel = this.createRowsPanel(false);
     this.pullRequestRowsPanel = this.createRowsPanel();
     this.pipelineRowsPanel = this.createRowsPanel();
     this.pipelineRowsPanel.marginTop = 1;
     this.issueRowsPanel = this.createRowsPanel();
-    this.issueViewRowsPanel = this.createRowsPanel();
+    this.issueViewRowsPanel = this.createRowsPanel(false);
     this.issueChildRowsPanel = this.createRowsPanel();
     this.pipelineJobRowsPanel = this.createRowsPanel();
     this.pipelineActionRowsPanel = this.createRowsPanel();
@@ -537,11 +538,28 @@ export class CollaborationPanel {
     this.syncRows(this.issueViewSelect, this.issueViewRowsPanel, this.issueViewRows);
   }
 
-  private createRowsPanel(): BoxRenderable {
-    return new BoxRenderable(this.renderer, {
+  private createRowsPanel(): ScrollBoxRenderable;
+  private createRowsPanel(scrollable: true): ScrollBoxRenderable;
+  private createRowsPanel(scrollable: false): BoxRenderable;
+  private createRowsPanel(scrollable = true): BoxRenderable | ScrollBoxRenderable {
+    if (!scrollable) {
+      return new BoxRenderable(this.renderer, {
+        width: "100%",
+        flexGrow: 1,
+        flexDirection: "column",
+        gap: 1,
+        visible: false,
+      });
+    }
+    return new ScrollBoxRenderable(this.renderer, {
       width: "100%",
-      flexDirection: "column",
-      gap: 1,
+      flexGrow: 1,
+      scrollY: true,
+      viewportCulling: true,
+      contentOptions: {
+        flexDirection: "column",
+        gap: 1,
+      },
       visible: false,
     });
   }
@@ -575,6 +593,9 @@ export class CollaborationPanel {
           { text: "", color: this.theme.muted },
           index === select.getSelectedIndex(),
         );
+        if (index === select.getSelectedIndex() && panel instanceof ScrollBoxRenderable) {
+          panel.scrollChildIntoView(row.panel.id);
+        }
       }
     }
     if (select === this.pipelineSelect) {

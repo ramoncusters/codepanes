@@ -1,5 +1,6 @@
 import {
   BoxRenderable,
+  ScrollBoxRenderable,
   SelectRenderable,
   SelectRenderableEvents,
   type CliRenderer,
@@ -34,7 +35,7 @@ export class ActionsPanel {
   private readonly processes = new Map<number, ActionProcess>();
   private readonly outputs = new Map<number, CommandOutputPanel>();
   private readonly rows: ActionRow[] = [];
-  private readonly rowsPanel: BoxRenderable;
+  private readonly rowsPanel: ScrollBoxRenderable;
   private readonly statuses = new Map<number, ActionRowStatus>();
   private readonly stopping = new Set<number>();
   private outputFocused = false;
@@ -46,7 +47,7 @@ export class ActionsPanel {
     this.panel.border = true;
     this.panel.paddingTop = stacked ? 4 : 1;
     this.listPanel.flexShrink = stacked ? 0 : 1;
-    this.listPanel.minHeight = stacked ? Math.max(6, this.actions.length * 3 + 2) : null;
+    this.listPanel.minHeight = stacked ? 6 : null;
     this.output.panel.flexShrink = 1;
     this.output.panel.minHeight = stacked ? 3 : null;
     for (const output of this.outputs.values()) {
@@ -112,10 +113,15 @@ export class ActionsPanel {
       selectedDescriptionColor: "#ffffff",
       selectedTextColor: "#ffffff",
     });
-    this.rowsPanel = new BoxRenderable(renderer, {
+    this.rowsPanel = new ScrollBoxRenderable(renderer, {
+      width: "100%",
       flexGrow: 1,
-      flexDirection: "column",
-      gap: 1,
+      scrollY: true,
+      viewportCulling: true,
+      contentOptions: {
+        flexDirection: "column",
+        gap: 1,
+      },
     });
     this.listPanel.add(this.rowsPanel);
     this.select.visible = false;
@@ -313,6 +319,7 @@ export class ActionsPanel {
       const row = this.rows[index];
       if (row) {
         row.update(action.name, action.command, status, selected, this.pulse);
+        if (selected) this.rowsPanel.scrollChildIntoView(row.panel.id);
       } else {
         const newRow = new ActionRow(
           this.renderer,

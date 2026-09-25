@@ -2,6 +2,7 @@ import {
   BoxRenderable,
   InputRenderable,
   InputRenderableEvents,
+  ScrollBoxRenderable,
   SelectRenderable,
   SelectRenderableEvents,
   TextRenderable,
@@ -36,7 +37,7 @@ export class WorktreesPanel {
   readonly selectedWorktrees = new Set<string>();
   private worktrees: Worktree[];
   private readonly listPanel: BoxRenderable;
-  private readonly rowsPanel: BoxRenderable;
+  private readonly rowsPanel: ScrollBoxRenderable;
   private readonly rows: WorktreeRow[] = [];
   private readonly operationRows: TextRenderable[] = [];
   private readonly operationRowsPanel: BoxRenderable;
@@ -59,7 +60,6 @@ export class WorktreesPanel {
     this.listPanel.flexShrink = stacked ? 0 : 1;
     this.listPanel.minHeight = stacked ? this.minimumOverviewHeight() : null;
     this.rowsPanel.flexShrink = stacked ? 0 : 1;
-    this.rowsPanel.minHeight = stacked ? this.rows.length * 4 + 1 : null;
     this.output.panel.flexShrink = stacked ? 1 : 1;
     this.output.panel.minHeight = stacked ? 3 : null;
   };
@@ -146,10 +146,15 @@ export class WorktreesPanel {
       selectedDescriptionColor: "#ffffff",
       selectedTextColor: "#ffffff",
     });
-    this.rowsPanel = new BoxRenderable(renderer, {
+    this.rowsPanel = new ScrollBoxRenderable(renderer, {
+      width: "100%",
       flexGrow: 1,
-      flexDirection: "column",
-      gap: 1,
+      scrollY: true,
+      viewportCulling: true,
+      contentOptions: {
+        flexDirection: "column",
+        gap: 1,
+      },
     });
     this.listPanel.add(this.rowsPanel);
     this.operationsPanel = new BoxRenderable(renderer, {
@@ -370,6 +375,7 @@ export class WorktreesPanel {
         const row = this.rows[index];
         if (row) {
           row.update(worktree, state);
+          if (state.cursorSelected) this.rowsPanel.scrollChildIntoView(row.panel.id);
         } else {
           const newRow = new WorktreeRow(this.renderer, worktree, state, this.theme);
           this.rows.push(newRow);
@@ -431,7 +437,7 @@ export class WorktreesPanel {
 
   private minimumOverviewHeight(): number {
     const operationsHeight = this.operationRecords.size > 0 ? this.operationRecords.size + 6 : 0;
-    return Math.max(8, this.rows.length * 4 + operationsHeight + 7);
+    return Math.max(8, operationsHeight + 7);
   }
 
   private startSpinner(): void {
