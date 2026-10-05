@@ -66,6 +66,33 @@ export async function getBranches(cwd: string): Promise<BranchOption[]> {
     branches.push({ name, ref: name, remote: ref.startsWith("refs/remotes/") });
   }
 
+  const remoteNames = [...new Set(branches
+    .filter((branch) => branch.remote)
+    .map((branch) => branch.name.slice(0, branch.name.indexOf("/"))))];
+  const mergedRemoteBranches = new Set<string>();
+  for (const remote of remoteNames) {
+    try {
+      const { stdout: head } = await execFileAsync(
+        "git",
+        ["symbolic-ref", "--quiet", `refs/remotes/${remote}/HEAD`],
+        { cwd },
+      );
+      const { stdout: merged } = await execFileAsync(
+        "git",
+        ["for-each-ref", `--merged=${head.trim()}`, "--format=%(refname:short)", `refs/remotes/${remote}`],
+        { cwd },
+      );
+      for (const name of merged.split(/\r?\n/).filter(Boolean)) {
+        if (!name.endsWith("/HEAD")) mergedRemoteBranches.add(name);
+      }
+    } catch {
+      // A remote without a fetched default branch cannot be classified as merged.
+    }
+  }
+
+  for (const branch of branches) {
+    if (branch.remote && mergedRemoteBranches.has(branch.name)) branch.merged = true;
+  }
   return branches.sort((left, right) =>
     Number(left.remote) - Number(right.remote) || left.name.localeCompare(right.name));
 }

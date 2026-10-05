@@ -1,5 +1,5 @@
 export type Worktree = { path: string; branch: string; name?: string; remote?: string };
-export type BranchOption = { name: string; ref: string; remote: boolean };
+export type BranchOption = { name: string; ref: string; remote: boolean; merged?: boolean };
 export type DetachedRef = { name: string; ref: string; kind: "tag" | "commit"; description?: string };
 export type WorktreeCreationMode =
   | "new-branch"

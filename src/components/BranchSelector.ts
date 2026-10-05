@@ -9,6 +9,8 @@ import type { Theme } from "../services/themes.js";
 import type { BranchOption } from "../types.js";
 import { keyHintsWithBlankLine } from "./keyHints.js";
 
+type BranchSelectorOption = BranchOption | { kind: "merged-toggle" };
+
 export class BranchSelector {
   readonly panel: BoxRenderable;
   readonly select: SelectRenderable;
@@ -16,6 +18,9 @@ export class BranchSelector {
   readonly indicator: TextRenderable;
   private readonly renderer: CliRenderer;
   private itemCount = 0;
+  private branches: BranchOption[] = [];
+  private mergedBranches: BranchOption[] = [];
+  private mergedExpanded = false;
   private readonly handleResize = (): void => {
     this.updateLayout();
   };
@@ -79,21 +84,31 @@ export class BranchSelector {
     this.panel.add(this.indicator);
     this.panel.add(this.hint);
     this.select.on(SelectRenderableEvents.ITEM_SELECTED, (index) => {
-      const option = this.select.options[index]?.value as BranchOption | undefined;
-      if (option) this.onSelect(option);
+      const option = this.select.options[index]?.value as BranchSelectorOption | undefined;
+      if (!option) return;
+      if ("kind" in option) {
+        const selectedIndex = this.select.getSelectedIndex();
+        this.mergedExpanded = !this.mergedExpanded;
+        this.setOptions();
+        this.select.setSelectedIndex(Math.min(selectedIndex, this.select.options.length - 1));
+        this.updateIndicator();
+        this.updateLayout();
+        return;
+      }
+      this.onSelect(option);
     });
     this.select.on(SelectRenderableEvents.SELECTION_CHANGED, () => this.updateIndicator());
   }
 
   open(branches: BranchOption[], theme: Theme): void {
-    this.itemCount = branches.length;
-    this.updateLayout();
-    this.select.options = branches.map((branch) => ({
-      name: `  ${branch.remote ? `remote  ${branch.name}` : `local   ${branch.name}`}`,
-      description: `  ${branch.ref}`,
-      value: branch,
-    }));
-    const mainIndex = branches.findIndex((branch) => branch.name === "main" && !branch.remote);
+    this.branches = branches;
+    this.mergedBranches = branches.filter((branch) => branch.merged);
+    this.mergedExpanded = false;
+    this.setOptions();
+    const mainIndex = this.select.options.findIndex((option) => {
+      const branch = option.value as BranchSelectorOption;
+      return !("kind" in branch) && branch.name === "main" && !branch.remote;
+    });
     this.select.setSelectedIndex(mainIndex >= 0 ? mainIndex : 0);
     this.updateIndicator();
     this.applyTheme(theme);
@@ -125,6 +140,31 @@ export class BranchSelector {
 
   private updateIndicator(): void {
     this.indicator.top = 1 + this.select.getSelectedIndex() * 3;
+  }
+
+  private setOptions(): void {
+    const visibleBranches = this.branches.filter((branch) => !branch.merged);
+    const options: BranchSelectorOption[] = [...visibleBranches];
+    if (this.mergedBranches.length > 0) {
+      options.push({ kind: "merged-toggle" });
+      if (this.mergedExpanded) options.push(...this.mergedBranches);
+    }
+    this.itemCount = options.length;
+    this.updateLayout();
+    this.select.options = options.map((option) => {
+      if ("kind" in option) {
+        return {
+          name: `  Merged (${this.mergedBranches.length})${this.mergedExpanded ? " ▲" : " ▼"}`,
+          description: this.mergedExpanded ? "  collapse merged branches" : "  expand merged branches",
+          value: option,
+        };
+      }
+      return {
+        name: `  ${option.remote ? `remote  ${option.name}` : `local   ${option.name}`}`,
+        description: `  ${option.ref}`,
+        value: option,
+      };
+    });
   }
 
   private updateLayout(): void {
