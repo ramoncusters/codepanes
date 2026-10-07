@@ -34,9 +34,13 @@ an installation error.
 Controls: use `Up`/`Down` and `Enter` to open a worktree, `Tab` to cycle
 between the Worktrees, Lazygit, and Actions tabs, and `Q` to quit. The Actions
 tab runs project-configured commands in the currently selected worktree. Press
-`Enter` to start an action, `x` to stop the selected action, and `X` to stop
-all actions. Actions marked `persistent` are intended for long-running or watch
-commands.
+`Enter` to start an action, `p` to inspect matching processes, `x` to stop the
+selected action, and `X` to stop all actions. In the process view, `j`/`k`
+choose a process, `x` stops it, `X` stops it and its descendants, `r` refreshes
+the list, and `Esc` returns to the actions. Process matches that are not owned
+by the current CodePanes session are marked as possible matches and require
+confirmation before being stopped. Actions marked `persistent` are intended
+for long-running or watch commands.
 
 User configuration is stored in `~/.config/codepanes/config.json`. Keybindings
 are nested by tab name, can be global or scoped to a project, and each

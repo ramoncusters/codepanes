@@ -25,6 +25,7 @@ export type Action =
   | "run-command"
   | "clear-operations"
   | "run-action"
+  | "show-processes"
   | "stop-action"
   | "stop-actions";
 export type TabKeybindings = Partial<Record<TabName, Record<string, Keybinding>>>;

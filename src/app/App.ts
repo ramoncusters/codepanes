@@ -131,6 +131,7 @@ export async function runApp(): Promise<void> {
   const configInstructionsPanel = configEditor.instructionsPanel;
   const configEditorRenderable = configEditor.editor;
   let pendingEditorFallback: (() => void) | null = null;
+  let pendingProcessStop: (() => Promise<void>) | null = null;
   root.add(configEditorPanel);
 
   const worktreesPanel = new WorktreesPanel(
@@ -409,6 +410,7 @@ export async function runApp(): Promise<void> {
       | "authenticate"
       | "switch-actions"
       | "editor-fallback"
+      | "stop-process"
       | "collaboration-comment"
       | "collaboration-action",
     label: string,
@@ -639,6 +641,7 @@ export async function runApp(): Promise<void> {
   };
 
   const updateTab = (index: number): void => {
+    if (index !== 3 && actionsPanel.isProcessView()) actionsPanel.closeProcessView();
     state.activeTab = index;
     worktreePanel.visible = index === 0;
     terminalPanel.visible = index === 1;
@@ -698,6 +701,7 @@ export async function runApp(): Promise<void> {
       footerText.content = keyHints(appliedTheme, [
         ["j/k", "choose action"],
         ["Enter", "run"],
+        ["p", "processes"],
         ["x", "stop"],
         ["X", "stop all"],
         ["C", "config"],
@@ -752,6 +756,22 @@ export async function runApp(): Promise<void> {
   promptInput.on(InputRenderableEvents.ENTER, () => {
     const value = promptInput.value.trim();
     const mode = state.promptMode;
+    if (mode === "stop-process") {
+      const answer = value.toLowerCase();
+      if (answer !== "y" && answer !== "n") {
+        footerText.content = "Please type y or n to choose whether to stop the process.";
+        return;
+      }
+      const stop = pendingProcessStop;
+      pendingProcessStop = null;
+      closePrompt();
+      if (answer === "y") {
+        void stop?.().catch((error: unknown) => {
+          footerText.content = `Unable to stop process: ${String(error)}`;
+        });
+      }
+      return;
+    }
     if (mode === "editor-fallback") {
       const answer = value.toLowerCase();
       if (answer !== "y" && answer !== "n") {
@@ -1026,6 +1046,11 @@ export async function runApp(): Promise<void> {
       actionsPanel.runSelected(selectedTarget());
       return;
     }
+    if (action === "show-processes") {
+      if (state.activeTab !== 3) return;
+      actionsPanel.openProcessView();
+      return;
+    }
     if (action === "stop-action") {
       if (state.activeTab !== 3) return;
       actionsPanel.stopSelected();
@@ -1191,6 +1216,34 @@ export async function runApp(): Promise<void> {
       }
     }
     if (state.activeTab === 3 && !state.promptActive && !state.keybindingsActive && !state.configEditorActive) {
+      if (actionsPanel.isProcessView()) {
+        if (key.name === "escape") {
+          key.preventDefault();
+          actionsPanel.closeProcessView();
+          return;
+        }
+        if (key.name === "r") {
+          key.preventDefault();
+          void actionsPanel.refreshProcesses();
+          return;
+        }
+        if (key.name === "x" || key.name === "X") {
+          key.preventDefault();
+          const process = actionsPanel.selectedProcess();
+          if (!process) {
+            footerText.content = "No matching process is selected.";
+            return;
+          }
+          const tree = key.name === "X";
+          pendingProcessStop = () => actionsPanel.stopSelectedProcess(tree);
+          openPrompt(
+            "stop-process",
+            `Stop PID ${process.pid}${tree ? " and its process tree" : ""}? Type y or n:`,
+          );
+          return;
+        }
+        return;
+      }
       if (key.name === "h") {
         key.preventDefault();
         actionsPanel.focusActions();

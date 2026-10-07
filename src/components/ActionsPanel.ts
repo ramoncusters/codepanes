@@ -3,6 +3,7 @@ import {
   ScrollBoxRenderable,
   SelectRenderable,
   SelectRenderableEvents,
+  TextRenderable,
   type CliRenderer,
   type TerminalColors,
 } from "@opentui/core";
@@ -17,6 +18,7 @@ import type { ProjectAction, Worktree } from "../types.js";
 import type { Theme } from "../services/themes.js";
 import { CommandOutputPanel } from "./CommandOutputPanel.js";
 import { ActionRow, type ActionRowStatus } from "./ActionRow.js";
+import { findActionProcesses, stopProcess, type ProcessMatch } from "../services/processes.js";
 
 type ActionProcess = {
   actionIndex: number;
@@ -38,6 +40,11 @@ export class ActionsPanel {
   private readonly rowsPanel: ScrollBoxRenderable;
   private readonly statuses = new Map<number, ActionRowStatus>();
   private readonly stopping = new Set<number>();
+  private readonly processPanel: BoxRenderable;
+  private readonly processSelect: SelectRenderable;
+  private readonly processInfo: TextRenderable;
+  private processMatches: ProcessMatch[] = [];
+  private processView = false;
   private outputFocused = false;
   private pulse = false;
   private pulseTimer: ReturnType<typeof setInterval> | null = null;
@@ -130,6 +137,32 @@ export class ActionsPanel {
     this.listPanel.add(this.select);
     this.panel.add(this.listPanel);
     this.panel.add(this.output.panel);
+    this.processPanel = new BoxRenderable(renderer, {
+      position: "absolute",
+      top: "10%",
+      left: "10%",
+      width: "80%",
+      height: "70%",
+      flexDirection: "column",
+      padding: 1,
+      border: true,
+      borderStyle: "rounded",
+      title: "processes",
+      zIndex: 20,
+      visible: false,
+    });
+    this.processSelect = new SelectRenderable(renderer, {
+      flexGrow: 1,
+      width: "100%",
+      options: [],
+      showDescription: true,
+      showSelectionIndicator: true,
+      selectedBackgroundColor: "#18264a",
+    });
+    this.processInfo = new TextRenderable(renderer, { content: "" });
+    this.processPanel.add(this.processSelect);
+    this.processPanel.add(this.processInfo);
+    this.panel.add(this.processPanel);
     for (const [index, action] of this.actions.entries()) {
       const output = new CommandOutputPanel(renderer, backgroundColor);
       output.panel.title = action.name;
@@ -141,6 +174,7 @@ export class ActionsPanel {
       this.showSelectedOutput();
       this.renderRows();
     });
+    this.processSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () => this.updateProcessInfo());
     renderer.on("resize", this.handleResize);
     this.handleResize(renderer.width);
     this.updateOptions();
@@ -180,6 +214,62 @@ export class ActionsPanel {
 
   scrollOutput(lines: number): void {
     this.selectedOutput().scrollBy(lines);
+  }
+
+  isProcessView(): boolean {
+    return this.processView;
+  }
+
+  openProcessView(): void {
+    const action = this.actions[this.select.getSelectedIndex()];
+    if (action) this.processPanel.title = `processes: ${action.name}`;
+    this.processView = true;
+    this.processPanel.visible = true;
+    this.select.blur();
+    this.processSelect.focus();
+    void this.refreshProcesses();
+  }
+
+  closeProcessView(): void {
+    this.processView = false;
+    this.processPanel.visible = false;
+    this.processSelect.blur();
+    this.focusActions();
+  }
+
+  async refreshProcesses(): Promise<void> {
+    const actionIndex = this.select.getSelectedIndex();
+    const action = this.actions[actionIndex];
+    if (!action) return;
+    const command = expandWorktreeCommand(
+      action.command,
+      this.currentWorktree?.path ?? "",
+      this.currentWorktree?.branch ?? "",
+    );
+    try {
+      this.processMatches = await findActionProcesses(command, this.processes.get(actionIndex)?.pty.pid);
+      this.processSelect.options = this.processMatches.map((match) => ({
+        name: `${match.source === "managed" ? "● managed" : "⚠ possible"}  PID ${match.pid}`,
+        description: `${match.elapsed} · ${match.command}`,
+        value: match,
+      }));
+      this.updateProcessInfo();
+    } catch (error: unknown) {
+      this.processMatches = [];
+      this.processSelect.options = [];
+      this.processInfo.content = `Unable to inspect processes: ${String(error)}`;
+    }
+  }
+
+  selectedProcess(): ProcessMatch | undefined {
+    return this.processMatches[this.processSelect.getSelectedIndex()];
+  }
+
+  async stopSelectedProcess(tree: boolean): Promise<void> {
+    const process = this.selectedProcess();
+    if (!process) return;
+    await stopProcess(process.pid, tree);
+    await this.refreshProcesses();
   }
 
   applyPalette(palette: TerminalColors): void {
@@ -358,6 +448,13 @@ export class ActionsPanel {
       if (index !== selectedIndex) output.blur();
     }
     if (this.outputFocused) this.selectedOutput().focus();
+  }
+
+  private updateProcessInfo(): void {
+    const process = this.selectedProcess();
+    this.processInfo.content = process
+      ? `PID ${process.pid} · ${process.source} · ${process.command}`
+      : "No matching processes found.";
   }
 }
 

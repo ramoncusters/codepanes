@@ -14,6 +14,7 @@ const defaultGlobalKeybindings: Record<string, Keybinding> = {
 };
 const defaultActionsKeybindings: Record<string, Keybinding> = {
   enter: { name: "Run action", action: "run-action" },
+  p: { name: "Show processes", action: "show-processes" },
   x: { name: "Stop selected action", action: "stop-action" },
   X: { name: "Stop all actions", action: "stop-actions" },
 };

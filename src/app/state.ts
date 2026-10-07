@@ -10,6 +10,7 @@ export type PromptMode =
   | "authenticate"
   | "apply-theme"
   | "editor-fallback"
+  | "stop-process"
   | "switch-actions"
   | "collaboration-comment"
   | "collaboration-action"
