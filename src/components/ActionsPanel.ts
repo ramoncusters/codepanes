@@ -39,6 +39,7 @@ export class ActionsPanel {
   private readonly rows: ActionRow[] = [];
   private readonly rowsPanel: ScrollBoxRenderable;
   private readonly statuses = new Map<number, ActionRowStatus>();
+  private readonly otherProcessCounts = new Map<number, number>();
   private readonly stopping = new Set<number>();
   private readonly processPanel: BoxRenderable;
   private readonly processSelect: SelectRenderable;
@@ -48,6 +49,7 @@ export class ActionsPanel {
   private outputFocused = false;
   private pulse = false;
   private pulseTimer: ReturnType<typeof setInterval> | null = null;
+  private processHintTimer: ReturnType<typeof setInterval> | null = null;
   private readonly handleResize = (width: number): void => {
     const stacked = width < 100;
     this.panel.flexDirection = stacked ? "column" : "row";
@@ -148,6 +150,9 @@ export class ActionsPanel {
       border: true,
       borderStyle: "rounded",
       title: "processes",
+      borderColor: "#2b3c68",
+      backgroundColor,
+      titleColor: "#7dd3fc",
       zIndex: 20,
       visible: false,
     });
@@ -157,9 +162,15 @@ export class ActionsPanel {
       options: [],
       showDescription: true,
       showSelectionIndicator: true,
+      backgroundColor,
+      focusedBackgroundColor: backgroundColor,
       selectedBackgroundColor: "#18264a",
+      focusedTextColor: "#ffffff",
+      selectedTextColor: "#ffffff",
+      descriptionColor: "#aab7d8",
+      selectedDescriptionColor: "#ffffff",
     });
-    this.processInfo = new TextRenderable(renderer, { content: "" });
+    this.processInfo = new TextRenderable(renderer, { content: "", fg: "#aab7d8" });
     this.processPanel.add(this.processSelect);
     this.processPanel.add(this.processInfo);
     this.panel.add(this.processPanel);
@@ -178,6 +189,9 @@ export class ActionsPanel {
     renderer.on("resize", this.handleResize);
     this.handleResize(renderer.width);
     this.updateOptions();
+    this.processHintTimer = setInterval(() => {
+      void this.refreshProcessHints();
+    }, 5000);
   }
 
   get activeCount(): number {
@@ -192,6 +206,7 @@ export class ActionsPanel {
     this.currentWorktree = worktree;
     this.listPanel.title = "actions";
     this.updateOptions();
+    void this.refreshProcessHints();
   }
 
   focusActions(): void {
@@ -247,7 +262,11 @@ export class ActionsPanel {
       this.currentWorktree?.branch ?? "",
     );
     try {
-      this.processMatches = await findActionProcesses(command, this.processes.get(actionIndex)?.pty.pid);
+      this.processMatches = await findActionProcesses(
+        command,
+        this.processes.get(actionIndex)?.pty.pid,
+        this.currentWorktree?.path,
+      );
       this.processSelect.options = this.processMatches.map((match) => ({
         name: `${match.source === "managed" ? "● managed" : "⚠ possible"}  PID ${match.pid}`,
         description: `${match.elapsed} · ${match.command}`,
@@ -284,6 +303,18 @@ export class ActionsPanel {
     this.panel.borderColor = theme.border;
     this.listPanel.borderColor = this.outputFocused ? theme.border : theme.accent;
     this.listPanel.titleColor = theme.accent;
+    this.processPanel.backgroundColor = theme.background;
+    this.processPanel.borderColor = theme.accent;
+    this.processPanel.titleColor = theme.accent;
+    this.processSelect.backgroundColor = theme.background;
+    this.processSelect.focusedBackgroundColor = theme.background;
+    this.processSelect.selectedBackgroundColor = theme.focusedBackground;
+    this.processSelect.textColor = theme.text;
+    this.processSelect.focusedTextColor = theme.text;
+    this.processSelect.selectedTextColor = theme.text;
+    this.processSelect.descriptionColor = theme.muted;
+    this.processSelect.selectedDescriptionColor = theme.text;
+    this.processInfo.fg = theme.muted;
     this.output.applyTheme(theme);
     for (const output of this.outputs.values()) output.applyTheme(theme);
     for (const row of this.rows) row.applyTheme(theme);
@@ -377,6 +408,7 @@ export class ActionsPanel {
     this.stopAll();
     this.renderer.off("resize", this.handleResize);
     if (this.pulseTimer) clearInterval(this.pulseTimer);
+    if (this.processHintTimer) clearInterval(this.processHintTimer);
     this.processes.clear();
   }
 
@@ -408,7 +440,7 @@ export class ActionsPanel {
       const selected = index === this.select.getSelectedIndex();
       const row = this.rows[index];
       if (row) {
-        row.update(action.name, action.command, status, selected, this.pulse);
+        row.update(action.name, action.command, status, selected, this.pulse, this.otherProcessCounts.get(index) ?? 0);
         if (selected) this.rowsPanel.scrollChildIntoView(row.panel.id);
       } else {
         const newRow = new ActionRow(
@@ -418,6 +450,7 @@ export class ActionsPanel {
           status,
           selected,
           this.pulse,
+          this.otherProcessCounts.get(index) ?? 0,
           this.theme,
         );
         this.rows.push(newRow);
@@ -453,8 +486,27 @@ export class ActionsPanel {
   private updateProcessInfo(): void {
     const process = this.selectedProcess();
     this.processInfo.content = process
-      ? `PID ${process.pid} · ${process.source} · ${process.command}`
+      ? [
+        `PID ${process.pid} · ${process.source}`,
+        `Command: ${process.command}`,
+        `Directory: ${process.cwd ?? "unavailable"}`,
+        `Parent: ${process.parentPid}${process.parentCommand ? ` · ${process.parentCommand}` : ""}`,
+      ].join("\n")
       : "No matching processes found.";
+  }
+
+  private async refreshProcessHints(): Promise<void> {
+    if (!this.currentWorktree) return;
+    const counts = await Promise.all(this.actions.map(async (action, index) => {
+      const command = expandWorktreeCommand(action.command, this.currentWorktree!.path, this.currentWorktree!.branch);
+      const matches = await findActionProcesses(command, this.processes.get(index)?.pty.pid, this.currentWorktree!.path);
+      return [index, matches.filter((match) => match.source !== "managed").length] as const;
+    }));
+    this.otherProcessCounts.clear();
+    for (const [index, count] of counts) {
+      if (count > 0) this.otherProcessCounts.set(index, count);
+    }
+    this.renderRows();
   }
 }
 

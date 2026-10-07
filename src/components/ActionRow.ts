@@ -16,15 +16,30 @@ export class ActionRow {
     status: ActionRowStatus,
     selected: boolean,
     pulse: boolean,
+    otherProcessCount: number,
     theme: Theme,
   ) {
     this.theme = theme;
-    this.row = new ListItemRow(renderer, name, [command], this.status(status, pulse), selected, theme);
+    this.row = new ListItemRow(
+      renderer,
+      name,
+      [command],
+      this.status(status, pulse, otherProcessCount),
+      selected,
+      theme,
+    );
     this.panel = this.row.panel;
   }
 
-  update(name: string, command: string, status: ActionRowStatus, selected: boolean, pulse: boolean): void {
-    this.row.update(name, [command], this.status(status, pulse), selected);
+  update(
+    name: string,
+    command: string,
+    status: ActionRowStatus,
+    selected: boolean,
+    pulse: boolean,
+    otherProcessCount: number,
+  ): void {
+    this.row.update(name, [command], this.status(status, pulse, otherProcessCount), selected);
   }
 
   applyTheme(theme: Theme): void {
@@ -32,13 +47,15 @@ export class ActionRow {
     this.row.applyTheme(theme);
   }
 
-  private status(status: ActionRowStatus, pulse: boolean): ListItemRowStatus {
+  private status(status: ActionRowStatus, pulse: boolean, otherProcessCount: number): ListItemRowStatus {
     const icon = status === "running"
       ? (pulse ? "●" : "◉")
       : status === "failed" || status === "success" ? "●" : "○";
     return {
-      text: `${icon} ${status === "success" ? "successful" : status}`,
-      color: status === "running" || status === "success"
+      text: `${icon} ${status === "success" ? "successful" : status}${otherProcessCount > 0 ? ` · +${otherProcessCount}` : ""}`,
+      color: otherProcessCount > 0
+        ? this.theme.accent
+        : status === "running" || status === "success"
         ? this.theme.success ?? this.theme.accent
         : status === "failed" ? this.theme.error ?? this.theme.accent : this.theme.muted,
     };

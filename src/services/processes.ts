@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readlink } from "node:fs/promises";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -8,10 +9,12 @@ export type ProcessMatch = {
   parentPid: number;
   command: string;
   elapsed: string;
+  cwd?: string;
+  parentCommand?: string;
   source: "managed" | "possible";
 };
 
-type ProcessInfo = ProcessMatch & { cwd?: string };
+type ProcessInfo = ProcessMatch;
 
 function normalized(value: string): string {
   return value.replaceAll(/\s+/g, " ").trim().toLowerCase();
@@ -54,9 +57,23 @@ async function listProcesses(): Promise<ProcessInfo[]> {
   return process.platform === "win32" ? listWindowsProcesses() : listUnixProcesses();
 }
 
+async function processCwd(pid: number): Promise<string | undefined> {
+  try {
+    if (process.platform === "linux") return await readlink(`/proc/${pid}/cwd`);
+    if (process.platform === "darwin") {
+      const { stdout } = await execFileAsync("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"]);
+      return stdout.split(/\r?\n/).find((line) => line.startsWith("n"))?.slice(1);
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 export async function findActionProcesses(
   command: string,
   currentPid: number | undefined,
+  currentCwd?: string,
 ): Promise<ProcessMatch[]> {
   const expected = normalized(command);
   if (!expected) return [];
@@ -75,14 +92,20 @@ export async function findActionProcesses(
       }
     }
   }
-  return processes
+  const parentCommands = new Map(processes.map((candidate) => [candidate.pid, candidate.command]));
+  const matches = await Promise.all(processes
     .filter((candidate) => candidate.pid !== process.pid)
     .filter((candidate) => normalized(candidate.command).includes(expected))
-    .map((candidate) => ({
+    .map(async (candidate) => ({
       ...candidate,
+      cwd: managedPids.has(candidate.pid) && currentCwd
+        ? currentCwd
+        : await processCwd(candidate.pid),
+      parentCommand: parentCommands.get(candidate.parentPid),
       source: managedPids.has(candidate.pid) ? "managed" as const : "possible" as const,
     }))
-    .sort((left, right) => left.pid - right.pid);
+  );
+  return matches.sort((left, right) => left.pid - right.pid);
 }
 
 export async function stopProcess(pid: number, tree: boolean): Promise<void> {
