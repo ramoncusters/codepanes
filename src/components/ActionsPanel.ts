@@ -18,6 +18,7 @@ import type { ProjectAction, Worktree } from "../types.js";
 import type { Theme } from "../services/themes.js";
 import { CommandOutputPanel } from "./CommandOutputPanel.js";
 import { ActionRow, type ActionRowStatus } from "./ActionRow.js";
+import { ListItemRow } from "./ListItemRow.js";
 import { findActionProcesses, stopProcess, type ProcessMatch } from "../services/processes.js";
 
 type ActionProcess = {
@@ -43,6 +44,8 @@ export class ActionsPanel {
   private readonly stopping = new Set<number>();
   private readonly processPanel: BoxRenderable;
   private readonly processSelect: SelectRenderable;
+  private readonly processRowsPanel: BoxRenderable;
+  private readonly processRows: ListItemRow[] = [];
   private readonly processInfo: TextRenderable;
   private processMatches: ProcessMatch[] = [];
   private processView = false;
@@ -170,7 +173,15 @@ export class ActionsPanel {
       descriptionColor: "#aab7d8",
       selectedDescriptionColor: "#ffffff",
     });
+    this.processRowsPanel = new BoxRenderable(renderer, {
+      width: "100%",
+      flexGrow: 1,
+      flexDirection: "column",
+      gap: 1,
+    });
+    this.processSelect.visible = false;
     this.processInfo = new TextRenderable(renderer, { content: "", fg: "#aab7d8" });
+    this.processPanel.add(this.processRowsPanel);
     this.processPanel.add(this.processSelect);
     this.processPanel.add(this.processInfo);
     this.panel.add(this.processPanel);
@@ -185,7 +196,10 @@ export class ActionsPanel {
       this.showSelectedOutput();
       this.renderRows();
     });
-    this.processSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () => this.updateProcessInfo());
+    this.processSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () => {
+      this.updateProcessInfo();
+      this.renderProcessRows();
+    });
     renderer.on("resize", this.handleResize);
     this.handleResize(renderer.width);
     this.updateOptions();
@@ -268,15 +282,17 @@ export class ActionsPanel {
         this.currentWorktree?.path,
       );
       this.processSelect.options = this.processMatches.map((match) => ({
-        name: `${match.source === "managed" ? "● managed" : "⚠ possible"}  PID ${match.pid}`,
+        name: `PID ${match.pid}`,
         description: `${match.elapsed} · ${match.command}`,
         value: match,
       }));
       this.updateProcessInfo();
+      this.renderProcessRows();
     } catch (error: unknown) {
       this.processMatches = [];
       this.processSelect.options = [];
       this.processInfo.content = `Unable to inspect processes: ${String(error)}`;
+      this.renderProcessRows();
     }
   }
 
@@ -289,6 +305,7 @@ export class ActionsPanel {
     if (!process) return;
     await stopProcess(process.pid, tree);
     await this.refreshProcesses();
+    if (this.processView) this.processSelect.focus();
   }
 
   applyPalette(palette: TerminalColors): void {
@@ -319,6 +336,7 @@ export class ActionsPanel {
     for (const output of this.outputs.values()) output.applyTheme(theme);
     for (const row of this.rows) row.applyTheme(theme);
     this.updateOptions();
+    this.renderProcessRows();
   }
 
   runSelected(worktree = this.currentWorktree): void {
@@ -465,6 +483,36 @@ export class ActionsPanel {
     }
   }
 
+  private renderProcessRows(): void {
+    for (const [index, process] of this.processMatches.entries()) {
+      const selected = index === this.processSelect.getSelectedIndex();
+      const status = process.source === "attached"
+        ? { text: "● Attached", color: this.theme.success ?? this.theme.accent }
+        : { text: "⚠ Unverified source", color: this.theme.accent };
+      const existing = this.processRows[index];
+      if (existing) {
+        existing.update(`PID ${process.pid}`, [`${process.elapsed} · ${process.command}`], status, selected);
+      } else {
+        const row = new ListItemRow(
+          this.renderer,
+          `PID ${process.pid}`,
+          [`${process.elapsed} · ${process.command}`],
+          status,
+          selected,
+          this.theme,
+        );
+        this.processRows.push(row);
+        this.processRowsPanel.add(row.panel);
+      }
+    }
+    while (this.processRows.length > this.processMatches.length) {
+      const row = this.processRows.pop();
+      if (!row) continue;
+      this.processRowsPanel.remove(row.panel);
+      row.panel.destroy();
+    }
+  }
+
   private outputFor(actionIndex: number): CommandOutputPanel {
     return this.outputs.get(actionIndex) ?? this.output;
   }
@@ -500,7 +548,7 @@ export class ActionsPanel {
     const counts = await Promise.all(this.actions.map(async (action, index) => {
       const command = expandWorktreeCommand(action.command, this.currentWorktree!.path, this.currentWorktree!.branch);
       const matches = await findActionProcesses(command, this.processes.get(index)?.pty.pid, this.currentWorktree!.path);
-      return [index, matches.filter((match) => match.source !== "managed").length] as const;
+      return [index, matches.filter((match) => match.source !== "attached").length] as const;
     }));
     this.otherProcessCounts.clear();
     for (const [index, count] of counts) {

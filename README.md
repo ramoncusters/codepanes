@@ -37,13 +37,14 @@ tab runs project-configured commands in the currently selected worktree. Press
 `Enter` to start an action, `p` to inspect matching processes, `x` to stop the
 selected action, and `X` to stop all actions. In the process view, `j`/`k`
 choose a process, `x` stops it, `X` stops it and its descendants, `r` refreshes
-the list, and `Esc` returns to the actions. Process matches that are not owned
-by the current CodePanes session are marked as possible matches and require
-confirmation before being stopped. Selecting a process also shows its command,
-working directory, parent PID, and parent command when the platform exposes
-that information. Action rows show a subtle `+N` indicator when other matching
-processes are detected. Actions marked `persistent` are intended for
-long-running or watch commands.
+the list, and `Esc` returns to the actions. Processes attached to the current
+CodePanes action are marked as attached. Other command matches are marked as
+having an unverified source because they may be stale CodePanes processes or
+unrelated external processes, and require confirmation before being stopped.
+Selecting a process also shows its command, working directory, parent PID, and
+parent command when the platform exposes that information. Action rows show a
+subtle `+N` indicator when other matching processes are detected. Actions
+marked `persistent` are intended for long-running or watch commands.
 
 User configuration is stored in `~/.config/codepanes/config.json`. Keybindings
 are nested by tab name, can be global or scoped to a project, and each

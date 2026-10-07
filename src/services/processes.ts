@@ -11,7 +11,7 @@ export type ProcessMatch = {
   elapsed: string;
   cwd?: string;
   parentCommand?: string;
-  source: "managed" | "possible";
+  source: "attached" | "unverified";
 };
 
 type ProcessInfo = ProcessMatch;
@@ -30,7 +30,7 @@ async function listUnixProcesses(): Promise<ProcessInfo[]> {
       parentPid: Number(match[2]),
       elapsed: match[3],
       command: match[4].trim(),
-      source: "possible" as const,
+      source: "unverified" as const,
     }];
   });
 }
@@ -49,7 +49,7 @@ async function listWindowsProcesses(): Promise<ProcessInfo[]> {
     parentPid: row.ParentProcessId ?? 0,
     elapsed: "",
     command: row.CommandLine,
-    source: "possible" as const,
+    source: "unverified" as const,
   }] : []);
 }
 
@@ -78,15 +78,15 @@ export async function findActionProcesses(
   const expected = normalized(command);
   if (!expected) return [];
   const processes = await listProcesses();
-  const managedPids = new Set<number>();
+  const attachedPids = new Set<number>();
   if (currentPid !== undefined) {
-    managedPids.add(currentPid);
+    attachedPids.add(currentPid);
     let changed = true;
     while (changed) {
       changed = false;
       for (const candidate of processes) {
-        if (managedPids.has(candidate.parentPid) && !managedPids.has(candidate.pid)) {
-          managedPids.add(candidate.pid);
+        if (attachedPids.has(candidate.parentPid) && !attachedPids.has(candidate.pid)) {
+          attachedPids.add(candidate.pid);
           changed = true;
         }
       }
@@ -98,11 +98,11 @@ export async function findActionProcesses(
     .filter((candidate) => normalized(candidate.command).includes(expected))
     .map(async (candidate) => ({
       ...candidate,
-      cwd: managedPids.has(candidate.pid) && currentCwd
+      cwd: attachedPids.has(candidate.pid) && currentCwd
         ? currentCwd
         : await processCwd(candidate.pid),
       parentCommand: parentCommands.get(candidate.parentPid),
-      source: managedPids.has(candidate.pid) ? "managed" as const : "possible" as const,
+      source: attachedPids.has(candidate.pid) ? "attached" as const : "unverified" as const,
     }))
   );
   return matches.sort((left, right) => left.pid - right.pid);
