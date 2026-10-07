@@ -19,7 +19,10 @@ import type { Theme } from "../services/themes.js";
 import { CommandOutputPanel } from "./CommandOutputPanel.js";
 import { ActionRow, type ActionRowStatus } from "./ActionRow.js";
 import { ListItemRow } from "./ListItemRow.js";
+import { keyHints } from "./keyHints.js";
 import { findActionProcesses, stopProcess, type ProcessMatch } from "../services/processes.js";
+
+const processSpinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 type ActionProcess = {
   actionIndex: number;
@@ -47,8 +50,15 @@ export class ActionsPanel {
   private readonly processRowsPanel: BoxRenderable;
   private readonly processRows: ListItemRow[] = [];
   private readonly processInfo: TextRenderable;
+  private readonly processOperationsPanel: BoxRenderable;
+  private readonly processOperationRowsPanel: BoxRenderable;
+  private readonly processOperationRows: TextRenderable[] = [];
+  private readonly processOperationSpacer: TextRenderable;
+  private readonly processOperationHint: TextRenderable;
   private processMatches: ProcessMatch[] = [];
   private processView = false;
+  private processSpinnerTimer: ReturnType<typeof setInterval> | null = null;
+  private processSpinnerFrame = 0;
   private outputFocused = false;
   private pulse = false;
   private pulseTimer: ReturnType<typeof setInterval> | null = null;
@@ -181,9 +191,34 @@ export class ActionsPanel {
     });
     this.processSelect.visible = false;
     this.processInfo = new TextRenderable(renderer, { content: "", fg: "#aab7d8" });
+    this.processOperationsPanel = new BoxRenderable(renderer, {
+      flexDirection: "column",
+      border: true,
+      borderStyle: "rounded",
+      borderColor: "#2b3c68",
+      title: "operations",
+      titleColor: "#7dd3fc",
+      backgroundColor,
+      padding: 1,
+      visible: false,
+      flexShrink: 0,
+    });
+    this.processOperationRowsPanel = new BoxRenderable(renderer, {
+      flexDirection: "column",
+      flexGrow: 1,
+    });
+    this.processOperationSpacer = new TextRenderable(renderer, { content: " ", height: 1 });
+    this.processOperationHint = new TextRenderable(renderer, {
+      content: keyHints(this.theme, [["x", "clear operations"]]),
+      fg: "#aab7d8",
+    });
     this.processPanel.add(this.processRowsPanel);
     this.processPanel.add(this.processSelect);
     this.processPanel.add(this.processInfo);
+    this.processOperationsPanel.add(this.processOperationRowsPanel);
+    this.processOperationsPanel.add(this.processOperationSpacer);
+    this.processOperationsPanel.add(this.processOperationHint);
+    this.processPanel.add(this.processOperationsPanel);
     this.panel.add(this.processPanel);
     for (const [index, action] of this.actions.entries()) {
       const output = new CommandOutputPanel(renderer, backgroundColor);
@@ -303,9 +338,41 @@ export class ActionsPanel {
   async stopSelectedProcess(tree: boolean): Promise<void> {
     const process = this.selectedProcess();
     if (!process) return;
-    await stopProcess(process.pid, tree);
-    await this.refreshProcesses();
-    if (this.processView) this.processSelect.focus();
+    const operation = new TextRenderable(this.renderer, { content: "", fg: this.theme.text });
+    this.processOperationRows.push(operation);
+    this.processOperationRowsPanel.add(operation);
+    this.processOperationsPanel.visible = true;
+    this.startProcessSpinner(process.pid, operation);
+    try {
+      await stopProcess(process.pid, tree);
+      const deadline = Date.now() + 10_000;
+      let stopped = false;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await this.refreshProcesses();
+        stopped = !this.processMatches.some((match) => match.pid === process.pid);
+        if (stopped) break;
+      }
+
+      operation.content = stopped
+        ? `✓ stopped PID ${process.pid}`
+        : `⚠ PID ${process.pid} is still running`;
+    } catch (error: unknown) {
+      operation.content = `✖ unable to stop PID ${process.pid}: ${String(error)}`;
+      await this.refreshProcesses();
+    } finally {
+      this.stopProcessSpinner();
+      if (this.processView) this.processSelect.focus();
+    }
+  }
+
+  clearProcessOperations(): void {
+    for (const operation of this.processOperationRows) {
+      this.processOperationRowsPanel.remove(operation);
+      operation.destroy();
+    }
+    this.processOperationRows.length = 0;
+    this.processOperationsPanel.visible = false;
   }
 
   applyPalette(palette: TerminalColors): void {
@@ -323,6 +390,12 @@ export class ActionsPanel {
     this.processPanel.backgroundColor = theme.background;
     this.processPanel.borderColor = theme.accent;
     this.processPanel.titleColor = theme.accent;
+    this.processOperationsPanel.backgroundColor = theme.panelBackground;
+    this.processOperationsPanel.borderColor = theme.border;
+    this.processOperationsPanel.titleColor = theme.accent;
+    this.processOperationHint.fg = theme.muted;
+    this.processOperationHint.content = keyHints(theme, [["x", "clear operations"]]);
+    for (const operation of this.processOperationRows) operation.fg = theme.text;
     this.processSelect.backgroundColor = theme.background;
     this.processSelect.focusedBackgroundColor = theme.background;
     this.processSelect.selectedBackgroundColor = theme.focusedBackground;
@@ -500,6 +573,7 @@ export class ActionsPanel {
           status,
           selected,
           this.theme,
+          24,
         );
         this.processRows.push(row);
         this.processRowsPanel.add(row.panel);
@@ -511,6 +585,22 @@ export class ActionsPanel {
       this.processRowsPanel.remove(row.panel);
       row.panel.destroy();
     }
+  }
+
+  private startProcessSpinner(pid: number, operation: TextRenderable): void {
+    this.stopProcessSpinner();
+    this.processSpinnerFrame = 0;
+    operation.content = `${processSpinnerFrames[0]} stopping PID ${pid}`;
+    this.processSpinnerTimer = setInterval(() => {
+      this.processSpinnerFrame = (this.processSpinnerFrame + 1) % processSpinnerFrames.length;
+      operation.content = `${processSpinnerFrames[this.processSpinnerFrame]} stopping PID ${pid}`;
+    }, 100);
+  }
+
+  private stopProcessSpinner(): void {
+    if (this.processSpinnerTimer) clearInterval(this.processSpinnerTimer);
+    this.processSpinnerTimer = null;
+    this.processSpinnerFrame = 0;
   }
 
   private outputFor(actionIndex: number): CommandOutputPanel {

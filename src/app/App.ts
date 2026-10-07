@@ -1227,14 +1227,19 @@ export async function runApp(): Promise<void> {
           void actionsPanel.refreshProcesses();
           return;
         }
-        if (key.name === "x" || key.name === "X") {
+        if (key.name === "x") {
+          key.preventDefault();
+          actionsPanel.clearProcessOperations();
+          return;
+        }
+        if (key.name === "d" || key.name === "D") {
           key.preventDefault();
           const process = actionsPanel.selectedProcess();
           if (!process) {
             footerText.content = "No matching process is selected.";
             return;
           }
-          const tree = key.name === "X";
+          const tree = key.name === "D";
           pendingProcessStop = () => actionsPanel.stopSelectedProcess(tree);
           openPrompt(
             "stop-process",

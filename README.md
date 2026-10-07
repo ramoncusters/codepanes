@@ -36,8 +36,9 @@ between the Worktrees, Lazygit, and Actions tabs, and `Q` to quit. The Actions
 tab runs project-configured commands in the currently selected worktree. Press
 `Enter` to start an action, `p` to inspect matching processes, `x` to stop the
 selected action, and `X` to stop all actions. In the process view, `j`/`k`
-choose a process, `x` stops it, `X` stops it and its descendants, `r` refreshes
-the list, and `Esc` returns to the actions. Processes attached to the current
+choose a process, `d` stops it, `D` stops it and its descendants, `r` refreshes
+the list, `x` clears the operations panel, and `Esc` returns to the actions.
+Processes attached to the current
 CodePanes action are marked as attached. Other command matches are marked as
 having an unverified source because they may be stale CodePanes processes or
 unrelated external processes, and require confirmation before being stopped.

@@ -24,6 +24,7 @@ export class ListItemRow {
     status: ListItemRowStatus | ListItemRowStatus[],
     selected: boolean,
     theme: Theme,
+    statusWidth = 18,
   ) {
     this.theme = theme;
     this.currentName = name;
@@ -48,7 +49,7 @@ export class ListItemRow {
     }
     for (const detail of this.details) detailPanel.add(detail);
     const statusPanel = new BoxRenderable(renderer, {
-      width: 18,
+      width: statusWidth,
       height: "100%",
       flexDirection: "column",
       justifyContent: "center",
